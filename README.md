@@ -5,7 +5,14 @@ Official Python SDK for the [Sendly](https://sendly.live) SMS API.
 ## Installation
 
 ```bash
+# pip
 pip install sendly
+
+# poetry
+poetry add sendly
+
+# pipenv
+pipenv install sendly
 ```
 
 ## Requirements
