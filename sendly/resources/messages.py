@@ -94,7 +94,7 @@ class MessagesResource:
         # Make API request
         data = self._http.request(
             method="POST",
-            path="/v1/messages",
+            path="/messages",
             body=body,
         )
 
@@ -141,7 +141,7 @@ class MessagesResource:
         # Make API request
         data = self._http.request(
             method="GET",
-            path="/v1/messages",
+            path="/messages",
             params=params if params else None,
         )
 
@@ -180,7 +180,7 @@ class MessagesResource:
         # Make API request
         data = self._http.request(
             method="GET",
-            path=f"/v1/messages/{quote(id, safe='')}",
+            path=f"/messages/{quote(id, safe='')}",
         )
 
         try:
@@ -220,7 +220,7 @@ class MessagesResource:
         while True:
             data = self._http.request(
                 method="GET",
-                path="/v1/messages",
+                path="/messages",
                 params={"limit": batch_size, "offset": offset},
             )
 
@@ -289,7 +289,7 @@ class MessagesResource:
 
         data = self._http.request(
             method="POST",
-            path="/v1/messages/schedule",
+            path="/messages/schedule",
             body=body,
         )
 
@@ -332,7 +332,7 @@ class MessagesResource:
 
         data = self._http.request(
             method="GET",
-            path="/v1/messages/scheduled",
+            path="/messages/scheduled",
             params=params if params else None,
         )
 
@@ -359,7 +359,7 @@ class MessagesResource:
 
         data = self._http.request(
             method="GET",
-            path=f"/v1/messages/scheduled/{quote(id, safe='')}",
+            path=f"/messages/scheduled/{quote(id, safe='')}",
         )
 
         try:
@@ -385,7 +385,7 @@ class MessagesResource:
 
         data = self._http.request(
             method="DELETE",
-            path=f"/v1/messages/scheduled/{quote(id, safe='')}",
+            path=f"/messages/scheduled/{quote(id, safe='')}",
         )
 
         try:
@@ -454,7 +454,7 @@ class MessagesResource:
 
         data = self._http.request(
             method="POST",
-            path="/v1/messages/batch",
+            path="/messages/batch",
             body=body,
         )
 
@@ -486,7 +486,7 @@ class MessagesResource:
 
         data = self._http.request(
             method="GET",
-            path=f"/v1/messages/batch/{quote(batch_id, safe='')}",
+            path=f"/messages/batch/{quote(batch_id, safe='')}",
         )
 
         try:
@@ -528,7 +528,7 @@ class MessagesResource:
 
         data = self._http.request(
             method="GET",
-            path="/v1/messages/batches",
+            path="/messages/batches",
             params=params if params else None,
         )
 
@@ -596,7 +596,7 @@ class AsyncMessagesResource:
         # Make API request
         data = await self._http.request(
             method="POST",
-            path="/v1/messages",
+            path="/messages",
             body=body,
         )
 
@@ -639,7 +639,7 @@ class AsyncMessagesResource:
         # Make API request
         data = await self._http.request(
             method="GET",
-            path="/v1/messages",
+            path="/messages",
             params=params if params else None,
         )
 
@@ -672,7 +672,7 @@ class AsyncMessagesResource:
         # Make API request
         data = await self._http.request(
             method="GET",
-            path=f"/v1/messages/{quote(id, safe='')}",
+            path=f"/messages/{quote(id, safe='')}",
         )
 
         try:
@@ -712,7 +712,7 @@ class AsyncMessagesResource:
         while True:
             data = await self._http.request(
                 method="GET",
-                path="/v1/messages",
+                path="/messages",
                 params={"limit": batch_size, "offset": offset},
             )
 
@@ -772,7 +772,7 @@ class AsyncMessagesResource:
 
         data = await self._http.request(
             method="POST",
-            path="/v1/messages/schedule",
+            path="/messages/schedule",
             body=body,
         )
 
@@ -805,7 +805,7 @@ class AsyncMessagesResource:
 
         data = await self._http.request(
             method="GET",
-            path="/v1/messages/scheduled",
+            path="/messages/scheduled",
             params=params if params else None,
         )
 
@@ -824,7 +824,7 @@ class AsyncMessagesResource:
 
         data = await self._http.request(
             method="GET",
-            path=f"/v1/messages/scheduled/{quote(id, safe='')}",
+            path=f"/messages/scheduled/{quote(id, safe='')}",
         )
 
         try:
@@ -842,7 +842,7 @@ class AsyncMessagesResource:
 
         data = await self._http.request(
             method="DELETE",
-            path=f"/v1/messages/scheduled/{quote(id, safe='')}",
+            path=f"/messages/scheduled/{quote(id, safe='')}",
         )
 
         try:
@@ -892,7 +892,7 @@ class AsyncMessagesResource:
 
         data = await self._http.request(
             method="POST",
-            path="/v1/messages/batch",
+            path="/messages/batch",
             body=body,
         )
 
@@ -916,7 +916,7 @@ class AsyncMessagesResource:
 
         data = await self._http.request(
             method="GET",
-            path=f"/v1/messages/batch/{quote(batch_id, safe='')}",
+            path=f"/messages/batch/{quote(batch_id, safe='')}",
         )
 
         try:
@@ -948,7 +948,7 @@ class AsyncMessagesResource:
 
         data = await self._http.request(
             method="GET",
-            path="/v1/messages/batches",
+            path="/messages/batches",
             params=params if params else None,
         )
 
