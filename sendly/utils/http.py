@@ -22,10 +22,10 @@ from ..types import RateLimitInfo
 
 T = TypeVar("T")
 
-DEFAULT_BASE_URL = "https://sendly.live/api"
+DEFAULT_BASE_URL = "https://sendly.live/api/v1"
 DEFAULT_TIMEOUT = 30.0
 DEFAULT_MAX_RETRIES = 3
-SDK_VERSION = "1.0.0"
+SDK_VERSION = "1.0.5"
 
 
 class HttpClient:

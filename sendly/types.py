@@ -44,7 +44,7 @@ class SendlyConfig(BaseModel):
 
     api_key: str = Field(..., description="Your Sendly API key")
     base_url: str = Field(
-        default="https://sendly.live/api",
+        default="https://sendly.live/api/v1",
         description="Base URL for the Sendly API",
     )
     timeout: float = Field(
@@ -244,6 +244,7 @@ class BatchStatus(str, Enum):
     PROCESSING = "processing"
     COMPLETED = "completed"
     PARTIAL_FAILURE = "partial_failure"
+    FAILED = "failed"
 
 
 class BatchMessageItem(BaseModel):

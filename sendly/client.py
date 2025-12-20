@@ -10,7 +10,7 @@ from .resources.messages import AsyncMessagesResource, MessagesResource
 from .types import RateLimitInfo, SendlyConfig
 from .utils.http import AsyncHttpClient, HttpClient
 
-DEFAULT_BASE_URL = "https://sendly.live/api"
+DEFAULT_BASE_URL = "https://sendly.live/api/v1"
 DEFAULT_TIMEOUT = 30.0
 DEFAULT_MAX_RETRIES = 3
 
@@ -60,7 +60,7 @@ class Sendly:
 
         Args:
             api_key: Your Sendly API key (sk_test_v1_xxx or sk_live_v1_xxx)
-            base_url: Base URL for the API (default: https://sendly.live/api)
+            base_url: Base URL for the API (default: https://sendly.live/api/v1)
             timeout: Request timeout in seconds (default: 30)
             max_retries: Maximum retry attempts (default: 3)
             config: Alternative configuration object
@@ -178,7 +178,7 @@ class AsyncSendly:
 
         Args:
             api_key: Your Sendly API key (sk_test_v1_xxx or sk_live_v1_xxx)
-            base_url: Base URL for the API (default: https://sendly.live/api)
+            base_url: Base URL for the API (default: https://sendly.live/api/v1)
             timeout: Request timeout in seconds (default: 30)
             max_retries: Maximum retry attempts (default: 3)
             config: Alternative configuration object

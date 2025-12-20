@@ -21,7 +21,7 @@ def live_api_key():
 @pytest.fixture
 def base_url():
     """Base URL for API"""
-    return "https://sendly.live/api"
+    return "https://sendly.live/api/v1"
 
 
 @pytest.fixture

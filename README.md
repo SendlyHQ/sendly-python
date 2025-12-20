@@ -163,7 +163,7 @@ from sendly import Sendly, SendlyConfig
 # Using keyword arguments
 client = Sendly(
     api_key='sk_live_v1_xxx',
-    base_url='https://sendly.live/api',  # Optional
+    base_url='https://sendly.live/api/v1',  # Optional
     timeout=60.0,  # Optional: seconds (default: 30)
     max_retries=5  # Optional: (default: 3)
 )
@@ -333,7 +333,7 @@ async with AsyncSendly('sk_live_v1_xxx') as client:
 ```python
 Sendly(
     api_key: str,
-    base_url: str = 'https://sendly.live/api',
+    base_url: str = 'https://sendly.live/api/v1',
     timeout: float = 30.0,
     max_retries: int = 3,
 )
