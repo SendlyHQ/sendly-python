@@ -12,6 +12,7 @@ from ..types import (
     Webhook,
     WebhookCreatedResponse,
     WebhookDelivery,
+    WebhookMode,
     WebhookSecretRotation,
     WebhookTestResult,
 )
@@ -95,6 +96,7 @@ class WebhooksResource:
         url: str,
         events: List[str],
         description: Optional[str] = None,
+        mode: Optional[WebhookMode] = None,
         metadata: Optional[Dict[str, Any]] = None,
     ) -> WebhookCreatedResponse:
         """
@@ -104,6 +106,7 @@ class WebhooksResource:
             url: HTTPS endpoint URL
             events: Event types to subscribe to
             description: Optional description
+            mode: Event mode filter (all, test, live). Live requires verification.
             metadata: Custom metadata
 
         Returns:
@@ -122,6 +125,8 @@ class WebhooksResource:
         body = {"url": url, "events": events}
         if description:
             body["description"] = description
+        if mode:
+            body["mode"] = mode.value if isinstance(mode, WebhookMode) else mode
         if metadata:
             body["metadata"] = metadata
 
@@ -164,6 +169,7 @@ class WebhooksResource:
         events: Optional[List[str]] = None,
         description: Optional[str] = None,
         is_active: Optional[bool] = None,
+        mode: Optional[WebhookMode] = None,
         metadata: Optional[Dict[str, Any]] = None,
     ) -> Webhook:
         """
@@ -175,6 +181,7 @@ class WebhooksResource:
             events: New event subscriptions
             description: New description
             is_active: Enable/disable webhook
+            mode: Event mode filter (all, test, live)
             metadata: Custom metadata
 
         Returns:
@@ -195,6 +202,8 @@ class WebhooksResource:
             body["description"] = description
         if is_active is not None:
             body["is_active"] = is_active
+        if mode is not None:
+            body["mode"] = mode.value if isinstance(mode, WebhookMode) else mode
         if metadata is not None:
             body["metadata"] = metadata
 
@@ -310,6 +319,7 @@ class AsyncWebhooksResource:
         url: str,
         events: List[str],
         description: Optional[str] = None,
+        mode: Optional[WebhookMode] = None,
         metadata: Optional[Dict[str, Any]] = None,
     ) -> WebhookCreatedResponse:
         """Create a new webhook endpoint."""
@@ -322,6 +332,8 @@ class AsyncWebhooksResource:
         body = {"url": url, "events": events}
         if description:
             body["description"] = description
+        if mode:
+            body["mode"] = mode.value if isinstance(mode, WebhookMode) else mode
         if metadata:
             body["metadata"] = metadata
 
@@ -348,6 +360,7 @@ class AsyncWebhooksResource:
         events: Optional[List[str]] = None,
         description: Optional[str] = None,
         is_active: Optional[bool] = None,
+        mode: Optional[WebhookMode] = None,
         metadata: Optional[Dict[str, Any]] = None,
     ) -> Webhook:
         """Update a webhook configuration."""
@@ -366,6 +379,8 @@ class AsyncWebhooksResource:
             body["description"] = description
         if is_active is not None:
             body["is_active"] = is_active
+        if mode is not None:
+            body["mode"] = mode.value if isinstance(mode, WebhookMode) else mode
         if metadata is not None:
             body["metadata"] = metadata
 

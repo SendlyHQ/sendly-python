@@ -485,6 +485,14 @@ class WebhookEventType(str, Enum):
     MESSAGE_BOUNCED = "message.bounced"
 
 
+class WebhookMode(str, Enum):
+    """Webhook event mode filter"""
+
+    ALL = "all"  # Receive both test and live events
+    TEST = "test"  # Only sandbox/test events
+    LIVE = "live"  # Only production events (requires verification)
+
+
 class CircuitState(str, Enum):
     """Circuit breaker state for webhook delivery"""
 
@@ -509,6 +517,7 @@ class Webhook(BaseModel):
     url: str = Field(..., description="HTTPS endpoint URL")
     events: List[str] = Field(..., description="Event types subscribed to")
     description: Optional[str] = Field(default=None, description="Optional description")
+    mode: WebhookMode = Field(default=WebhookMode.ALL, description="Event mode filter")
     is_active: bool = Field(..., alias="isActive", description="Whether webhook is active")
     failure_count: int = Field(default=0, alias="failureCount", description="Consecutive failures")
     last_failure_at: Optional[str] = Field(
@@ -549,6 +558,9 @@ class CreateWebhookOptions(BaseModel):
     url: str = Field(..., description="HTTPS endpoint URL")
     events: List[str] = Field(..., description="Event types to subscribe to")
     description: Optional[str] = Field(default=None, description="Optional description")
+    mode: Optional[WebhookMode] = Field(
+        default=None, description="Event mode filter (all, test, live)"
+    )
     metadata: Optional[Dict[str, Any]] = Field(default=None, description="Custom metadata")
 
 
@@ -559,6 +571,9 @@ class UpdateWebhookOptions(BaseModel):
     events: Optional[List[str]] = Field(default=None, description="New event subscriptions")
     description: Optional[str] = Field(default=None, description="New description")
     is_active: Optional[bool] = Field(default=None, alias="isActive", description="Enable/disable")
+    mode: Optional[WebhookMode] = Field(
+        default=None, description="Event mode filter (all, test, live)"
+    )
     metadata: Optional[Dict[str, Any]] = Field(default=None, description="Custom metadata")
 
     class Config:
