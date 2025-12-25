@@ -32,6 +32,13 @@ class SenderType(str, Enum):
     SANDBOX = "sandbox"
 
 
+class MessageType(str, Enum):
+    """Message type for compliance classification"""
+
+    MARKETING = "marketing"
+    TRANSACTIONAL = "transactional"
+
+
 class PricingTier(str, Enum):
     """SMS pricing tier"""
 
@@ -86,6 +93,11 @@ class SendMessageRequest(BaseModel):
         default=None,
         alias="from",
         description="Sender ID or phone number",
+    )
+    message_type: Optional[MessageType] = Field(
+        default=None,
+        alias="messageType",
+        description="Message type: 'marketing' (default, subject to quiet hours) or 'transactional' (24/7)",
     )
 
     class Config:
@@ -185,6 +197,11 @@ class ScheduleMessageRequest(BaseModel):
         default=None,
         alias="from",
         description="Sender ID (for international destinations only)",
+    )
+    message_type: Optional[MessageType] = Field(
+        default=None,
+        alias="messageType",
+        description="Message type: 'marketing' (default, subject to quiet hours) or 'transactional' (24/7)",
     )
 
     class Config:
@@ -289,6 +306,11 @@ class BatchMessageRequest(BaseModel):
         default=None,
         alias="from",
         description="Sender ID (for international destinations only)",
+    )
+    message_type: Optional[MessageType] = Field(
+        default=None,
+        alias="messageType",
+        description="Message type: 'marketing' (default, subject to quiet hours) or 'transactional' (24/7)",
     )
 
     class Config:
