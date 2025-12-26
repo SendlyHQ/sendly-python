@@ -53,6 +53,7 @@ class SendlyError(Exception):
             "invalid_auth_format",
             "invalid_key_format",
             "invalid_api_key",
+            "api_key_required",
             "key_revoked",
             "key_expired",
             "insufficient_permissions",
