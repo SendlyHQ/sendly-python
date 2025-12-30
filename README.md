@@ -80,10 +80,17 @@ from sendly import Sendly
 
 client = Sendly('sk_live_v1_xxx')
 
-# Basic usage
+# Basic usage (marketing message - default)
 message = client.messages.send(
     to='+15551234567',
-    text='Your verification code is: 123456'
+    text='Check out our new features!'
+)
+
+# Transactional message (bypasses quiet hours)
+message = client.messages.send(
+    to='+15551234567',
+    text='Your verification code is: 123456',
+    message_type='transactional'
 )
 
 # With custom sender ID (international)
@@ -227,13 +234,13 @@ print(client.is_test_mode())  # True
 
 # Use sandbox test numbers
 message = client.messages.send(
-    to=SANDBOX_TEST_NUMBERS.SUCCESS,  # +15550001234
+    to=SANDBOX_TEST_NUMBERS.SUCCESS,  # +15005550000
     text='Test message'
 )
 
 # Test error scenarios
 message = client.messages.send(
-    to=SANDBOX_TEST_NUMBERS.INVALID,  # +15550001001
+    to=SANDBOX_TEST_NUMBERS.INVALID,  # +15005550001
     text='This will fail'
 )
 ```
@@ -242,11 +249,12 @@ message = client.messages.send(
 
 | Number | Behavior |
 |--------|----------|
-| `+15550001234` | Instant success |
-| `+15550001010` | Success after 10s delay |
-| `+15550001001` | Fails: invalid_number |
-| `+15550001002` | Fails: carrier_rejected (2s delay) |
-| `+15550001003` | Fails: rate_limit_exceeded |
+| `+15005550000` | Success (instant) |
+| `+15005550001` | Fails: invalid_number |
+| `+15005550002` | Fails: unroutable_destination |
+| `+15005550003` | Fails: queue_full |
+| `+15005550004` | Fails: rate_limit_exceeded |
+| `+15005550006` | Fails: carrier_violation |
 
 ## Pricing Tiers
 

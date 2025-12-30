@@ -481,13 +481,16 @@ ALL_SUPPORTED_COUNTRIES: List[str] = [
 
 
 class SandboxTestNumbers:
-    """Test phone numbers for sandbox mode"""
+    """Test phone numbers for sandbox mode.
+    Use these with test API keys (sk_test_*) to simulate different scenarios.
+    """
 
-    SUCCESS = "+15550001234"  # Always succeeds instantly
-    DELAYED = "+15550001010"  # Succeeds after 10 second delay
-    INVALID = "+15550001001"  # Fails with invalid_number error
-    REJECTED = "+15550001002"  # Fails with carrier_rejected error
-    RATE_LIMITED = "+15550001003"  # Fails with rate_limit_exceeded error
+    SUCCESS = "+15005550000"  # Always succeeds - any number not in error list succeeds
+    INVALID = "+15005550001"  # Fails with invalid_number error
+    UNROUTABLE = "+15005550002"  # Fails with unroutable destination error
+    QUEUE_FULL = "+15005550003"  # Fails with queue_full error
+    RATE_LIMITED = "+15005550004"  # Fails with rate_limit_exceeded error
+    CARRIER_VIOLATION = "+15005550006"  # Fails with carrier_violation error
 
 
 SANDBOX_TEST_NUMBERS = SandboxTestNumbers()
