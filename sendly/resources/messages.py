@@ -50,6 +50,7 @@ class MessagesResource:
         to: str,
         text: str,
         from_: Optional[str] = None,
+        message_type: Optional[str] = None,
         **kwargs: Any,
     ) -> Message:
         """
@@ -59,6 +60,7 @@ class MessagesResource:
             to: Destination phone number in E.164 format (e.g., +15551234567)
             text: Message content
             from_: Optional sender ID or phone number
+            message_type: Message type for compliance - 'marketing' (default, subject to quiet hours) or 'transactional' (24/7)
 
         Returns:
             The created message
@@ -90,6 +92,8 @@ class MessagesResource:
         }
         if from_:
             body["from"] = from_
+        if message_type:
+            body["messageType"] = message_type
 
         # Make API request
         data = self._http.request(
@@ -251,6 +255,7 @@ class MessagesResource:
         text: str,
         scheduled_at: str,
         from_: Optional[str] = None,
+        message_type: Optional[str] = None,
         **kwargs: Any,
     ) -> ScheduledMessage:
         """
@@ -261,6 +266,7 @@ class MessagesResource:
             text: Message content
             scheduled_at: When to send (ISO 8601, must be > 1 minute in future)
             from_: Optional sender ID (for international destinations only)
+            message_type: Message type for compliance - 'marketing' (default, subject to quiet hours) or 'transactional' (24/7)
 
         Returns:
             The scheduled message
@@ -286,6 +292,8 @@ class MessagesResource:
         }
         if from_:
             body["from"] = from_
+        if message_type:
+            body["messageType"] = message_type
 
         data = self._http.request(
             method="POST",
@@ -405,6 +413,7 @@ class MessagesResource:
         self,
         messages: List[Dict[str, str]],
         from_: Optional[str] = None,
+        message_type: Optional[str] = None,
         **kwargs: Any,
     ) -> BatchMessageResponse:
         """
@@ -413,6 +422,7 @@ class MessagesResource:
         Args:
             messages: List of dicts with 'to' and 'text' keys (max 1000)
             from_: Optional sender ID (for international destinations only)
+            message_type: Message type for compliance - 'marketing' (default, subject to quiet hours) or 'transactional' (24/7)
 
         Returns:
             Batch response with individual message results
@@ -451,6 +461,8 @@ class MessagesResource:
         body: Dict[str, Any] = {"messages": messages}
         if from_:
             body["from"] = from_
+        if message_type:
+            body["messageType"] = message_type
 
         data = self._http.request(
             method="POST",
@@ -560,6 +572,7 @@ class AsyncMessagesResource:
         to: str,
         text: str,
         from_: Optional[str] = None,
+        message_type: Optional[str] = None,
         **kwargs: Any,
     ) -> Message:
         """
@@ -569,6 +582,7 @@ class AsyncMessagesResource:
             to: Destination phone number in E.164 format
             text: Message content
             from_: Optional sender ID or phone number
+            message_type: Message type for compliance - 'marketing' (default, subject to quiet hours) or 'transactional' (24/7)
 
         Returns:
             The created message
@@ -592,6 +606,8 @@ class AsyncMessagesResource:
         }
         if from_:
             body["from"] = from_
+        if message_type:
+            body["messageType"] = message_type
 
         # Make API request
         data = await self._http.request(
@@ -743,6 +759,7 @@ class AsyncMessagesResource:
         text: str,
         scheduled_at: str,
         from_: Optional[str] = None,
+        message_type: Optional[str] = None,
         **kwargs: Any,
     ) -> ScheduledMessage:
         """
@@ -753,6 +770,7 @@ class AsyncMessagesResource:
             text: Message content
             scheduled_at: When to send (ISO 8601, must be > 1 minute in future)
             from_: Optional sender ID (for international destinations only)
+            message_type: Message type for compliance - 'marketing' (default, subject to quiet hours) or 'transactional' (24/7)
 
         Returns:
             The scheduled message
@@ -769,6 +787,8 @@ class AsyncMessagesResource:
         }
         if from_:
             body["from"] = from_
+        if message_type:
+            body["messageType"] = message_type
 
         data = await self._http.request(
             method="POST",
@@ -862,6 +882,7 @@ class AsyncMessagesResource:
         self,
         messages: List[Dict[str, str]],
         from_: Optional[str] = None,
+        message_type: Optional[str] = None,
         **kwargs: Any,
     ) -> BatchMessageResponse:
         """Send multiple SMS messages in a single batch (async)"""
@@ -889,6 +910,8 @@ class AsyncMessagesResource:
         body: Dict[str, Any] = {"messages": messages}
         if from_:
             body["from"] = from_
+        if message_type:
+            body["messageType"] = message_type
 
         data = await self._http.request(
             method="POST",
