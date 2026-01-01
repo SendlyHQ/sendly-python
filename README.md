@@ -125,6 +125,56 @@ print(f'Status: {message.status}')
 print(f'Delivered: {message.delivered_at}')
 ```
 
+### Scheduling Messages
+
+```python
+# Schedule a message for future delivery
+scheduled = client.messages.schedule(
+    to='+15551234567',
+    text='Your appointment is tomorrow!',
+    scheduled_at='2025-01-15T10:00:00Z'
+)
+
+print(f'Scheduled: {scheduled.id}')
+print(f'Will send at: {scheduled.scheduled_at}')
+
+# List scheduled messages
+result = client.messages.list_scheduled()
+for msg in result.data:
+    print(f'{msg.id}: {msg.scheduled_at}')
+
+# Get a specific scheduled message
+msg = client.messages.get_scheduled('sched_xxx')
+
+# Cancel a scheduled message (refunds credits)
+result = client.messages.cancel_scheduled('sched_xxx')
+print(f'Refunded: {result.credits_refunded} credits')
+```
+
+### Batch Messages
+
+```python
+# Send multiple messages in one API call (up to 1000)
+batch = client.messages.send_batch(
+    messages=[
+        {'to': '+15551234567', 'text': 'Hello User 1!'},
+        {'to': '+15559876543', 'text': 'Hello User 2!'},
+        {'to': '+15551112222', 'text': 'Hello User 3!'}
+    ]
+)
+
+print(f'Batch ID: {batch.batch_id}')
+print(f'Queued: {batch.queued}')
+print(f'Failed: {batch.failed}')
+print(f'Credits used: {batch.credits_used}')
+
+# Get batch status
+status = client.messages.get_batch('batch_xxx')
+
+# List all batches
+result = client.messages.list_batches()
+```
+
 ### Rate Limit Information
 
 ```python
@@ -182,6 +232,106 @@ config = SendlyConfig(
     max_retries=5
 )
 client = Sendly(config=config)
+```
+
+## Webhooks
+
+Manage webhook endpoints to receive real-time delivery status updates.
+
+```python
+# Create a webhook endpoint
+webhook = client.webhooks.create(
+    url='https://example.com/webhooks/sendly',
+    events=['message.delivered', 'message.failed']
+)
+
+print(f'Webhook ID: {webhook.id}')
+print(f'Secret: {webhook.secret}')  # Store this securely!
+
+# List all webhooks
+webhooks = client.webhooks.list()
+
+# Get a specific webhook
+wh = client.webhooks.get('whk_xxx')
+
+# Update a webhook
+client.webhooks.update('whk_xxx',
+    url='https://new-endpoint.example.com/webhook',
+    events=['message.delivered', 'message.failed', 'message.sent']
+)
+
+# Test a webhook (sends a test event)
+result = client.webhooks.test('whk_xxx')
+print(f'Test {"passed" if result.success else "failed"}')
+
+# Rotate webhook secret
+rotation = client.webhooks.rotate_secret('whk_xxx')
+print(f'New secret: {rotation.secret}')
+
+# View delivery history
+deliveries = client.webhooks.get_deliveries('whk_xxx')
+
+# Retry a failed delivery
+client.webhooks.retry_delivery('whk_xxx', 'del_yyy')
+
+# Delete a webhook
+client.webhooks.delete('whk_xxx')
+```
+
+### Verifying Webhook Signatures
+
+```python
+from sendly import Webhooks
+
+webhooks = Webhooks('your_webhook_secret')
+
+# In your webhook handler (Flask example)
+@app.route('/webhooks/sendly', methods=['POST'])
+def handle_webhook():
+    signature = request.headers.get('X-Sendly-Signature')
+    payload = request.get_data(as_text=True)
+
+    try:
+        event = webhooks.verify_and_parse(payload, signature)
+        
+        if event.type == 'message.delivered':
+            print(f'Message {event.data.id} delivered')
+        elif event.type == 'message.failed':
+            print(f'Message {event.data.id} failed: {event.data.error_code}')
+        
+        return 'OK', 200
+    except Exception as e:
+        print(f'Invalid signature: {e}')
+        return 'Invalid signature', 400
+```
+
+## Account & Credits
+
+```python
+# Get account information
+account = client.account.get()
+print(f'Email: {account.email}')
+
+# Check credit balance
+credits = client.account.get_credits()
+print(f'Available: {credits.available_balance} credits')
+print(f'Reserved (scheduled): {credits.reserved_balance} credits')
+print(f'Total: {credits.balance} credits')
+
+# View credit transaction history
+result = client.account.get_credit_transactions()
+for tx in result.data:
+    print(f'{tx.type}: {tx.amount} credits - {tx.description}')
+
+# List API keys
+result = client.account.list_api_keys()
+for key in result.data:
+    print(f'{key.name}: {key.prefix}*** ({key.type})')
+
+# Get API key usage stats
+usage = client.account.get_api_key_usage('key_xxx')
+print(f'Messages sent: {usage.messages_sent}')
+print(f'Credits used: {usage.credits_used}')
 ```
 
 ## Error Handling
