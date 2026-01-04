@@ -1,3 +1,12 @@
+<p align="center">
+  <img src="https://raw.githubusercontent.com/SendlyHQ/sendly-python/main/.github/header.svg" alt="Sendly Python SDK" />
+</p>
+
+<p align="center">
+  <a href="https://pypi.org/project/sendly/"><img src="https://img.shields.io/pypi/v/sendly.svg?style=flat-square" alt="PyPI version" /></a>
+  <a href="https://github.com/SendlyHQ/sendly-python/blob/main/LICENSE"><img src="https://img.shields.io/pypi/l/sendly.svg?style=flat-square" alt="license" /></a>
+</p>
+
 # sendly
 
 Official Python SDK for the [Sendly](https://sendly.live) SMS API.
