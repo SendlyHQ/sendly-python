@@ -144,6 +144,43 @@ class AccountResource:
         response = self._http.request("GET", f"/keys/{key_id}/usage")
         return response
 
+    def create_api_key(self, name: str, expires_at: Optional[str] = None) -> Dict[str, Any]:
+        """
+        Create a new API key.
+
+        Args:
+            name: Display name for the API key
+            expires_at: Optional expiration date (ISO 8601)
+
+        Returns:
+            Dict with 'apiKey' (ApiKey metadata) and 'key' (full secret key - only shown once)
+
+        Example:
+            >>> result = client.account.create_api_key('Production')
+            >>> print(f"Save this key: {result['key']}")  # Only shown once!
+        """
+        if not name:
+            raise ValueError("API key name is required")
+
+        body: Dict[str, Any] = {"name": name}
+        if expires_at:
+            body["expiresAt"] = expires_at
+
+        response = self._http.request("POST", "/account/keys", body=body)
+        return response
+
+    def revoke_api_key(self, key_id: str) -> None:
+        """
+        Revoke an API key.
+
+        Args:
+            key_id: API key ID to revoke
+        """
+        if not key_id:
+            raise ValueError("API key ID is required")
+
+        self._http.request("DELETE", f"/account/keys/{key_id}")
+
 
 class AsyncAccountResource:
     """
@@ -192,3 +229,36 @@ class AsyncAccountResource:
         """Get usage statistics for an API key."""
         response = await self._http.request("GET", f"/keys/{key_id}/usage")
         return response
+
+    async def create_api_key(self, name: str, expires_at: Optional[str] = None) -> Dict[str, Any]:
+        """
+        Create a new API key (async).
+
+        Args:
+            name: Display name for the API key
+            expires_at: Optional expiration date (ISO 8601)
+
+        Returns:
+            Dict with 'apiKey' (ApiKey metadata) and 'key' (full secret key - only shown once)
+        """
+        if not name:
+            raise ValueError("API key name is required")
+
+        body: Dict[str, Any] = {"name": name}
+        if expires_at:
+            body["expiresAt"] = expires_at
+
+        response = await self._http.request("POST", "/account/keys", body=body)
+        return response
+
+    async def revoke_api_key(self, key_id: str) -> None:
+        """
+        Revoke an API key (async).
+
+        Args:
+            key_id: API key ID to revoke
+        """
+        if not key_id:
+            raise ValueError("API key ID is required")
+
+        await self._http.request("DELETE", f"/account/keys/{key_id}")

@@ -553,6 +553,67 @@ class MessagesResource:
                 status_code=200,
             ) from e
 
+    def preview_batch(
+        self,
+        messages: List[Dict[str, str]],
+        from_: Optional[str] = None,
+        message_type: Optional[str] = None,
+        **kwargs: Any,
+    ) -> Dict[str, Any]:
+        """
+        Preview a batch without sending (dry run)
+
+        Args:
+            messages: List of dicts with 'to' and 'text' keys (max 1000)
+            from_: Optional sender ID (for international destinations only)
+            message_type: Message type: 'marketing' (default) or 'transactional'
+
+        Returns:
+            Preview showing what would happen if batch was sent
+
+        Example:
+            >>> preview = client.messages.preview_batch(
+            ...     messages=[
+            ...         {'to': '+15551234567', 'text': 'Hello User 1!'},
+            ...         {'to': '+15559876543', 'text': 'Hello User 2!'}
+            ...     ]
+            ... )
+            >>> print(preview['canSend'])
+            >>> print(preview['creditsNeeded'])
+        """
+        if not messages or not isinstance(messages, list):
+            raise SendlyError(
+                message="messages must be a non-empty list",
+                code="invalid_request",
+                status_code=400,
+            )
+
+        if len(messages) > 1000:
+            raise SendlyError(
+                message="Maximum 1000 messages per batch",
+                code="invalid_request",
+                status_code=400,
+            )
+
+        for msg in messages:
+            validate_phone_number(msg.get("to", ""))
+            validate_message_text(msg.get("text", ""))
+
+        if from_:
+            validate_sender_id(from_)
+
+        body: Dict[str, Any] = {"messages": messages}
+        if from_:
+            body["from"] = from_
+        if message_type:
+            body["messageType"] = message_type
+
+        return self._http.request(
+            method="POST",
+            path="/messages/batch/preview",
+            body=body,
+        )
+
 
 class AsyncMessagesResource:
     """
@@ -983,3 +1044,44 @@ class AsyncMessagesResource:
                 code="invalid_response",
                 status_code=200,
             ) from e
+
+    async def preview_batch(
+        self,
+        messages: List[Dict[str, str]],
+        from_: Optional[str] = None,
+        message_type: Optional[str] = None,
+        **kwargs: Any,
+    ) -> Dict[str, Any]:
+        """Preview a batch without sending (dry run) (async)"""
+        if not messages or not isinstance(messages, list):
+            raise SendlyError(
+                message="messages must be a non-empty list",
+                code="invalid_request",
+                status_code=400,
+            )
+
+        if len(messages) > 1000:
+            raise SendlyError(
+                message="Maximum 1000 messages per batch",
+                code="invalid_request",
+                status_code=400,
+            )
+
+        for msg in messages:
+            validate_phone_number(msg.get("to", ""))
+            validate_message_text(msg.get("text", ""))
+
+        if from_:
+            validate_sender_id(from_)
+
+        body: Dict[str, Any] = {"messages": messages}
+        if from_:
+            body["from"] = from_
+        if message_type:
+            body["messageType"] = message_type
+
+        return await self._http.request(
+            method="POST",
+            path="/messages/batch/preview",
+            body=body,
+        )

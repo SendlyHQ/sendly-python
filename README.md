@@ -173,6 +173,16 @@ status = client.messages.get_batch('batch_xxx')
 
 # List all batches
 result = client.messages.list_batches()
+
+# Preview batch (dry run) - validates without sending
+preview = client.messages.preview_batch(
+    messages=[
+        {'to': '+15551234567', 'text': 'Hello User 1!'},
+        {'to': '+447700900123', 'text': 'Hello UK!'}
+    ]
+)
+print(f'Total credits needed: {preview.total_credits}')
+print(f'Valid: {preview.valid}, Invalid: {preview.invalid}')
 ```
 
 ### Rate Limit Information
@@ -332,6 +342,17 @@ for key in result.data:
 usage = client.account.get_api_key_usage('key_xxx')
 print(f'Messages sent: {usage.messages_sent}')
 print(f'Credits used: {usage.credits_used}')
+
+# Create a new API key
+new_key = client.account.create_api_key(
+    name='Production Key',
+    key_type='live',
+    scopes=['sms:send', 'sms:read']
+)
+print(f'New key: {new_key.key}')  # Only shown once!
+
+# Revoke an API key
+client.account.revoke_api_key('key_xxx')
 ```
 
 ## Error Handling
