@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "sendly"
-version = "3.8.1"
+version = "3.8.2"
 description = "Official Sendly Python SDK for SMS messaging"
 readme = "README.md"
 license = "MIT"
