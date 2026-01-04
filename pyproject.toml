@@ -45,8 +45,8 @@ dev = [
 [project.urls]
 Homepage = "https://sendly.live"
 Documentation = "https://sendly.live/docs"
-Repository = "https://github.com/sendly-live/sendly-python"
-Issues = "https://github.com/sendly-live/sendly-python/issues"
+Repository = "https://github.com/SendlyHQ/sendly-python"
+Issues = "https://github.com/SendlyHQ/sendly-python/issues"
 
 [tool.hatch.build.targets.wheel]
 packages = ["sendly"]
