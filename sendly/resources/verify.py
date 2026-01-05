@@ -5,12 +5,12 @@ Verify Resource - OTP Verification API
 from typing import Any, Dict, List, Optional
 
 from ..types import (
+    CheckVerificationResponse,
+    SendVerificationResponse,
     Verification,
     VerificationListResponse,
-    SendVerificationResponse,
-    CheckVerificationResponse,
 )
-from ..utils.http import HttpClient, AsyncHttpClient
+from ..utils.http import AsyncHttpClient, HttpClient
 
 
 class VerifyResource:
@@ -53,11 +53,22 @@ class VerifyResource:
             message=data.get("message"),
         )
 
+    def resend(self, verification_id: str) -> SendVerificationResponse:
+        """Resend an OTP verification code"""
+        data = self._http.request("POST", f"/verify/{verification_id}/resend")
+        return SendVerificationResponse(
+            id=data["id"],
+            status=data["status"],
+            phone=data["phone"],
+            expires_at=data["expires_at"],
+            sandbox=data["sandbox"],
+            sandbox_code=data.get("sandbox_code"),
+            message=data.get("message"),
+        )
+
     def check(self, verification_id: str, code: str) -> CheckVerificationResponse:
         """Check/verify an OTP code"""
-        data = self._http.request(
-            "POST", f"/verify/{verification_id}/check", json={"code": code}
-        )
+        data = self._http.request("POST", f"/verify/{verification_id}/check", json={"code": code})
         return CheckVerificationResponse(
             id=data["id"],
             status=data["status"],
@@ -152,6 +163,19 @@ class AsyncVerifyResource:
             body["code_length"] = code_length
 
         data = await self._http.request("POST", "/verify", json=body)
+        return SendVerificationResponse(
+            id=data["id"],
+            status=data["status"],
+            phone=data["phone"],
+            expires_at=data["expires_at"],
+            sandbox=data["sandbox"],
+            sandbox_code=data.get("sandbox_code"),
+            message=data.get("message"),
+        )
+
+    async def resend(self, verification_id: str) -> SendVerificationResponse:
+        """Resend an OTP verification code"""
+        data = await self._http.request("POST", f"/verify/{verification_id}/resend")
         return SendVerificationResponse(
             id=data["id"],
             status=data["status"],
