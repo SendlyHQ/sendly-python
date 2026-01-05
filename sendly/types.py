@@ -746,3 +746,126 @@ class ApiKey(BaseModel):
 
     class Config:
         populate_by_name = True
+
+
+# ============================================================================
+# Verify (OTP)
+# ============================================================================
+
+
+class VerificationStatus(str, Enum):
+    """Verification status"""
+
+    PENDING = "pending"
+    VERIFIED = "verified"
+    INVALID = "invalid"
+    EXPIRED = "expired"
+    FAILED = "failed"
+
+
+class VerificationDeliveryStatus(str, Enum):
+    """Verification delivery status"""
+
+    QUEUED = "queued"
+    SENT = "sent"
+    DELIVERED = "delivered"
+    FAILED = "failed"
+
+
+class SendVerificationResponse(BaseModel):
+    """Response from sending a verification"""
+
+    id: str = Field(..., description="Verification ID")
+    status: str = Field(..., description="Status")
+    phone: str = Field(..., description="Phone number")
+    expires_at: str = Field(..., description="Expiration timestamp")
+    sandbox: bool = Field(..., description="Sandbox mode")
+    sandbox_code: Optional[str] = Field(default=None, description="OTP code (sandbox only)")
+    message: Optional[str] = Field(default=None, description="Message")
+
+
+class CheckVerificationResponse(BaseModel):
+    """Response from checking a verification"""
+
+    id: str = Field(..., description="Verification ID")
+    status: str = Field(..., description="Status after check")
+    phone: str = Field(..., description="Phone number")
+    verified_at: Optional[str] = Field(default=None, description="Verification timestamp")
+    remaining_attempts: Optional[int] = Field(default=None, description="Remaining attempts")
+
+
+class Verification(BaseModel):
+    """A verification record"""
+
+    id: str = Field(..., description="Verification ID")
+    status: str = Field(..., description="Status")
+    phone: str = Field(..., description="Phone number")
+    delivery_status: str = Field(..., description="Delivery status")
+    attempts: int = Field(..., description="Check attempts")
+    max_attempts: int = Field(..., description="Max attempts")
+    expires_at: str = Field(..., description="Expiration timestamp")
+    verified_at: Optional[str] = Field(default=None, description="Verification timestamp")
+    created_at: str = Field(..., description="Creation timestamp")
+    sandbox: bool = Field(..., description="Sandbox mode")
+    app_name: Optional[str] = Field(default=None, description="App name")
+    template_id: Optional[str] = Field(default=None, description="Template ID")
+    profile_id: Optional[str] = Field(default=None, description="Profile ID")
+
+
+class VerificationListResponse(BaseModel):
+    """Response from listing verifications"""
+
+    verifications: List[Verification] = Field(..., description="Verifications")
+    pagination: Dict[str, Any] = Field(..., description="Pagination info")
+
+
+# ============================================================================
+# Templates
+# ============================================================================
+
+
+class TemplateStatus(str, Enum):
+    """Template status"""
+
+    DRAFT = "draft"
+    PUBLISHED = "published"
+
+
+class TemplateVariable(BaseModel):
+    """Template variable definition"""
+
+    key: str = Field(..., description="Variable key")
+    type: str = Field(..., description="Variable type")
+    fallback: Optional[str] = Field(default=None, description="Default fallback")
+
+
+class Template(BaseModel):
+    """An SMS template"""
+
+    id: str = Field(..., description="Template ID")
+    name: str = Field(..., description="Template name")
+    text: str = Field(..., description="Message text")
+    variables: List[Dict[str, Any]] = Field(default_factory=list, description="Variables")
+    is_preset: bool = Field(..., description="Is preset template")
+    preset_slug: Optional[str] = Field(default=None, description="Preset slug")
+    status: str = Field(..., description="Status")
+    version: int = Field(..., description="Version number")
+    published_at: Optional[str] = Field(default=None, description="Published timestamp")
+    created_at: str = Field(..., description="Creation timestamp")
+    updated_at: str = Field(..., description="Update timestamp")
+
+
+class TemplateListResponse(BaseModel):
+    """Response from listing templates"""
+
+    templates: List[Template] = Field(..., description="Templates")
+
+
+class TemplatePreview(BaseModel):
+    """Template preview with interpolated text"""
+
+    id: str = Field(..., description="Template ID")
+    name: str = Field(..., description="Template name")
+    original_text: str = Field(..., description="Original text")
+    preview_text: str = Field(..., description="Preview text")
+    variables: List[Dict[str, Any]] = Field(default_factory=list, description="Variables")

@@ -9,6 +9,8 @@ from typing import Any, Optional, Union
 from .resources.account import AccountResource, AsyncAccountResource
 from .resources.messages import AsyncMessagesResource, MessagesResource
 from .resources.webhooks import AsyncWebhooksResource, WebhooksResource
+from .resources.verify import VerifyResource, AsyncVerifyResource
+from .resources.templates import TemplatesResource, AsyncTemplatesResource
 from .types import RateLimitInfo, SendlyConfig
 from .utils.http import AsyncHttpClient, HttpClient
 
@@ -93,6 +95,8 @@ class Sendly:
         self.messages = MessagesResource(self._http)
         self.webhooks = WebhooksResource(self._http)
         self.account = AccountResource(self._http)
+        self.verify = VerifyResource(self._http)
+        self.templates = TemplatesResource(self._http)
 
     def __enter__(self) -> "Sendly":
         return self
@@ -213,6 +217,8 @@ class AsyncSendly:
         self.messages = AsyncMessagesResource(self._http)
         self.webhooks = AsyncWebhooksResource(self._http)
         self.account = AsyncAccountResource(self._http)
+        self.verify = AsyncVerifyResource(self._http)
+        self.templates = AsyncTemplatesResource(self._http)
 
     async def __aenter__(self) -> "AsyncSendly":
         return self
