@@ -819,6 +819,45 @@ class VerificationListResponse(BaseModel):
     pagination: Dict[str, Any] = Field(..., description="Pagination info")
 
 
+class VerifySessionStatus(str, Enum):
+    """Verify session status"""
+
+    PENDING = "pending"
+    PHONE_SUBMITTED = "phone_submitted"
+    CODE_SENT = "code_sent"
+    VERIFIED = "verified"
+    EXPIRED = "expired"
+    CANCELLED = "cancelled"
+
+
+class VerifySession(BaseModel):
+    """A hosted verification session"""
+
+    id: str = Field(..., description="Session ID")
+    url: str = Field(..., description="Hosted verification URL")
+    status: str = Field(..., description="Session status")
+    success_url: str = Field(..., description="Success redirect URL")
+    cancel_url: Optional[str] = Field(default=None, description="Cancel redirect URL")
+    brand_name: Optional[str] = Field(default=None, description="Brand name shown on page")
+    brand_color: Optional[str] = Field(default=None, description="Brand color for buttons")
+    phone: Optional[str] = Field(default=None, description="Phone number (after submitted)")
+    verification_id: Optional[str] = Field(default=None, description="Associated verification ID")
+    token: Optional[str] = Field(default=None, description="One-time validation token")
+    metadata: Optional[Dict[str, Any]] = Field(default=None, description="Custom metadata")
+    expires_at: str = Field(..., description="Session expiration timestamp")
+    created_at: str = Field(..., description="Creation timestamp")
+
+
+class ValidateSessionResponse(BaseModel):
+    """Response from validating a session token"""
+
+    valid: bool = Field(..., description="Whether the token is valid")
+    session_id: Optional[str] = Field(default=None, description="Session ID")
+    phone: Optional[str] = Field(default=None, description="Verified phone number")
+    verified_at: Optional[str] = Field(default=None, description="Verification timestamp")
+    metadata: Optional[Dict[str, Any]] = Field(default=None, description="Custom metadata")
+
+
 # ============================================================================
 # Templates
 # ============================================================================

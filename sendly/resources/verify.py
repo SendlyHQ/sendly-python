@@ -9,8 +9,120 @@ from ..types import (
     SendVerificationResponse,
     Verification,
     VerificationListResponse,
+    VerifySession,
+    ValidateSessionResponse,
 )
 from ..utils.http import AsyncHttpClient, HttpClient
+
+
+class SessionsResource:
+    """Sessions sub-resource for hosted verification flow (sync)"""
+
+    def __init__(self, http: HttpClient):
+        self._http = http
+
+    def create(
+        self,
+        success_url: str,
+        *,
+        cancel_url: Optional[str] = None,
+        brand_name: Optional[str] = None,
+        brand_color: Optional[str] = None,
+        metadata: Optional[Dict[str, Any]] = None,
+    ) -> VerifySession:
+        """Create a hosted verification session"""
+        body: Dict[str, Any] = {"success_url": success_url}
+        if cancel_url:
+            body["cancel_url"] = cancel_url
+        if brand_name:
+            body["brand_name"] = brand_name
+        if brand_color:
+            body["brand_color"] = brand_color
+        if metadata:
+            body["metadata"] = metadata
+
+        data = self._http.request("POST", "/verify/sessions", json=body)
+        return VerifySession(
+            id=data["id"],
+            url=data["url"],
+            status=data["status"],
+            success_url=data["success_url"],
+            cancel_url=data.get("cancel_url"),
+            brand_name=data.get("brand_name"),
+            brand_color=data.get("brand_color"),
+            phone=data.get("phone"),
+            verification_id=data.get("verification_id"),
+            token=data.get("token"),
+            metadata=data.get("metadata"),
+            expires_at=data["expires_at"],
+            created_at=data["created_at"],
+        )
+
+    def validate(self, token: str) -> ValidateSessionResponse:
+        """Validate a session token after user completes verification"""
+        data = self._http.request("POST", "/verify/sessions/validate", json={"token": token})
+        return ValidateSessionResponse(
+            valid=data["valid"],
+            session_id=data.get("session_id"),
+            phone=data.get("phone"),
+            verified_at=data.get("verified_at"),
+            metadata=data.get("metadata"),
+        )
+
+
+class AsyncSessionsResource:
+    """Sessions sub-resource for hosted verification flow (async)"""
+
+    def __init__(self, http: AsyncHttpClient):
+        self._http = http
+
+    async def create(
+        self,
+        success_url: str,
+        *,
+        cancel_url: Optional[str] = None,
+        brand_name: Optional[str] = None,
+        brand_color: Optional[str] = None,
+        metadata: Optional[Dict[str, Any]] = None,
+    ) -> VerifySession:
+        """Create a hosted verification session"""
+        body: Dict[str, Any] = {"success_url": success_url}
+        if cancel_url:
+            body["cancel_url"] = cancel_url
+        if brand_name:
+            body["brand_name"] = brand_name
+        if brand_color:
+            body["brand_color"] = brand_color
+        if metadata:
+            body["metadata"] = metadata
+
+        data = await self._http.request("POST", "/verify/sessions", json=body)
+        return VerifySession(
+            id=data["id"],
+            url=data["url"],
+            status=data["status"],
+            success_url=data["success_url"],
+            cancel_url=data.get("cancel_url"),
+            brand_name=data.get("brand_name"),
+            brand_color=data.get("brand_color"),
+            phone=data.get("phone"),
+            verification_id=data.get("verification_id"),
+            token=data.get("token"),
+            metadata=data.get("metadata"),
+            expires_at=data["expires_at"],
+            created_at=data["created_at"],
+        )
+
+    async def validate(self, token: str) -> ValidateSessionResponse:
+        """Validate a session token after user completes verification"""
+        data = await self._http.request("POST", "/verify/sessions/validate", json={"token": token})
+        return ValidateSessionResponse(
+            valid=data["valid"],
+            session_id=data.get("session_id"),
+            phone=data.get("phone"),
+            verified_at=data.get("verified_at"),
+            metadata=data.get("metadata"),
+        )
 
 
 class VerifyResource:
@@ -18,6 +130,7 @@ class VerifyResource:
 
     def __init__(self, http: HttpClient):
         self._http = http
+        self.sessions = SessionsResource(http)
 
     def send(
         self,
@@ -138,6 +251,7 @@ class AsyncVerifyResource:
 
     def __init__(self, http: AsyncHttpClient):
         self._http = http
+        self.sessions = AsyncSessionsResource(http)
 
     async def send(
         self,
