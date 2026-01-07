@@ -41,7 +41,7 @@ class SessionsResource:
         if metadata:
             body["metadata"] = metadata
 
-        data = self._http.request("POST", "/verify/sessions", json=body)
+        data = self._http.request("POST", "/verify/sessions", body=body)
         return VerifySession(
             id=data["id"],
             url=data["url"],
@@ -60,7 +60,7 @@ class SessionsResource:
 
     def validate(self, token: str) -> ValidateSessionResponse:
         """Validate a session token after user completes verification"""
-        data = self._http.request("POST", "/verify/sessions/validate", json={"token": token})
+        data = self._http.request("POST", "/verify/sessions/validate", body={"token": token})
         return ValidateSessionResponse(
             valid=data["valid"],
             session_id=data.get("session_id"),
@@ -96,7 +96,7 @@ class AsyncSessionsResource:
         if metadata:
             body["metadata"] = metadata
 
-        data = await self._http.request("POST", "/verify/sessions", json=body)
+        data = await self._http.request("POST", "/verify/sessions", body=body)
         return VerifySession(
             id=data["id"],
             url=data["url"],
@@ -115,7 +115,7 @@ class AsyncSessionsResource:
 
     async def validate(self, token: str) -> ValidateSessionResponse:
         """Validate a session token after user completes verification"""
-        data = await self._http.request("POST", "/verify/sessions/validate", json={"token": token})
+        data = await self._http.request("POST", "/verify/sessions/validate", body={"token": token})
         return ValidateSessionResponse(
             valid=data["valid"],
             session_id=data.get("session_id"),
@@ -155,7 +155,7 @@ class VerifyResource:
         if code_length:
             body["code_length"] = code_length
 
-        data = self._http.request("POST", "/verify", json=body)
+        data = self._http.request("POST", "/verify", body=body)
         return SendVerificationResponse(
             id=data["id"],
             status=data["status"],
@@ -181,7 +181,7 @@ class VerifyResource:
 
     def check(self, verification_id: str, code: str) -> CheckVerificationResponse:
         """Check/verify an OTP code"""
-        data = self._http.request("POST", f"/verify/{verification_id}/check", json={"code": code})
+        data = self._http.request("POST", f"/verify/{verification_id}/check", body={"code": code})
         return CheckVerificationResponse(
             id=data["id"],
             status=data["status"],
@@ -276,7 +276,7 @@ class AsyncVerifyResource:
         if code_length:
             body["code_length"] = code_length
 
-        data = await self._http.request("POST", "/verify", json=body)
+        data = await self._http.request("POST", "/verify", body=body)
         return SendVerificationResponse(
             id=data["id"],
             status=data["status"],
@@ -303,7 +303,7 @@ class AsyncVerifyResource:
     async def check(self, verification_id: str, code: str) -> CheckVerificationResponse:
         """Check/verify an OTP code"""
         data = await self._http.request(
-            "POST", f"/verify/{verification_id}/check", json={"code": code}
+            "POST", f"/verify/{verification_id}/check", body={"code": code}
         )
         return CheckVerificationResponse(
             id=data["id"],
