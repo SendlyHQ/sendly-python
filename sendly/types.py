@@ -22,6 +22,7 @@ class MessageStatus(str, Enum):
     SENT = "sent"
     DELIVERED = "delivered"
     FAILED = "failed"
+    BOUNCED = "bounced"
 
 
 class SenderType(str, Enum):

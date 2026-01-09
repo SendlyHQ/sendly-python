@@ -47,6 +47,7 @@ WebhookMessageStatus = Literal[
     "sent",
     "delivered",
     "failed",
+    "bounced",
     "undelivered",
 ]
 
