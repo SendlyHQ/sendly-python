@@ -8,7 +8,7 @@ from datetime import datetime
 from enum import Enum
 from typing import Any, Dict, List, Literal, Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 # ============================================================================
 # Enums
@@ -101,8 +101,7 @@ class SendMessageRequest(BaseModel):
         description="Message type: 'marketing' (default, subject to quiet hours) or 'transactional' (24/7)",
     )
 
-    class Config:
-        populate_by_name = True
+    model_config = ConfigDict(populate_by_name=True)
 
 
 class Message(BaseModel):
@@ -141,8 +140,7 @@ class Message(BaseModel):
         default=None, alias="deliveredAt", description="Delivery timestamp"
     )
 
-    class Config:
-        populate_by_name = True
+    model_config = ConfigDict(populate_by_name=True)
 
 
 class MessageListResponse(BaseModel):
@@ -205,8 +203,7 @@ class ScheduleMessageRequest(BaseModel):
         description="Message type: 'marketing' (default, subject to quiet hours) or 'transactional' (24/7)",
     )
 
-    class Config:
-        populate_by_name = True
+    model_config = ConfigDict(populate_by_name=True)
 
 
 class ScheduledMessage(BaseModel):
@@ -230,8 +227,7 @@ class ScheduledMessage(BaseModel):
     )
     sent_at: Optional[str] = Field(default=None, alias="sentAt", description="Sent timestamp")
 
-    class Config:
-        populate_by_name = True
+    model_config = ConfigDict(populate_by_name=True)
 
 
 class ScheduledMessageListResponse(BaseModel):
@@ -269,8 +265,7 @@ class CancelledMessageResponse(BaseModel):
     credits_refunded: int = Field(..., alias="creditsRefunded", description="Credits refunded")
     cancelled_at: str = Field(..., alias="cancelledAt", description="Cancellation timestamp")
 
-    class Config:
-        populate_by_name = True
+    model_config = ConfigDict(populate_by_name=True)
 
 
 # ============================================================================
@@ -314,8 +309,7 @@ class BatchMessageRequest(BaseModel):
         description="Message type: 'marketing' (default, subject to quiet hours) or 'transactional' (24/7)",
     )
 
-    class Config:
-        populate_by_name = True
+    model_config = ConfigDict(populate_by_name=True)
 
 
 class BatchMessageResult(BaseModel):
@@ -343,8 +337,7 @@ class BatchMessageResponse(BaseModel):
         default=None, alias="completedAt", description="Completion timestamp"
     )
 
-    class Config:
-        populate_by_name = True
+    model_config = ConfigDict(populate_by_name=True)
 
 
 class BatchListResponse(BaseModel):
@@ -394,9 +387,7 @@ class ApiErrorResponse(BaseModel):
         default=None, alias="retryAfter", description="Seconds to wait"
     )
 
-    class Config:
-        populate_by_name = True
-        extra = "allow"
+    model_config = ConfigDict(populate_by_name=True, extra="allow")
 
 
 # ============================================================================
@@ -568,8 +559,7 @@ class Webhook(BaseModel):
         default=None, alias="lastDeliveryAt", description="Last successful delivery"
     )
 
-    class Config:
-        populate_by_name = True
+    model_config = ConfigDict(populate_by_name=True)
 
 
 class WebhookCreatedResponse(Webhook):
@@ -602,8 +592,7 @@ class UpdateWebhookOptions(BaseModel):
     )
     metadata: Optional[Dict[str, Any]] = Field(default=None, description="Custom metadata")
 
-    class Config:
-        populate_by_name = True
+    model_config = ConfigDict(populate_by_name=True)
 
 
 class WebhookDelivery(BaseModel):
@@ -634,8 +623,7 @@ class WebhookDelivery(BaseModel):
         default=None, alias="deliveredAt", description="Delivery timestamp"
     )
 
-    class Config:
-        populate_by_name = True
+    model_config = ConfigDict(populate_by_name=True)
 
 
 class WebhookTestResult(BaseModel):
@@ -650,8 +638,7 @@ class WebhookTestResult(BaseModel):
     )
     error: Optional[str] = Field(default=None, description="Error message if failed")
 
-    class Config:
-        populate_by_name = True
+    model_config = ConfigDict(populate_by_name=True)
 
 
 class WebhookSecretRotation(BaseModel):
@@ -664,8 +651,7 @@ class WebhookSecretRotation(BaseModel):
     )
     message: str = Field(..., description="Message about grace period")
 
-    class Config:
-        populate_by_name = True
+    model_config = ConfigDict(populate_by_name=True)
 
 
 # ============================================================================
@@ -681,8 +667,7 @@ class Account(BaseModel):
     name: Optional[str] = Field(default=None, description="Display name")
     created_at: str = Field(..., alias="createdAt", description="Account creation date")
 
-    class Config:
-        populate_by_name = True
+    model_config = ConfigDict(populate_by_name=True)
 
 
 class Credits(BaseModel):
@@ -696,8 +681,7 @@ class Credits(BaseModel):
         default=0, alias="availableBalance", description="Total usable credits"
     )
 
-    class Config:
-        populate_by_name = True
+    model_config = ConfigDict(populate_by_name=True)
 
 
 class TransactionType(str, Enum):
@@ -723,8 +707,7 @@ class CreditTransaction(BaseModel):
     )
     created_at: str = Field(..., alias="createdAt", description="Transaction timestamp")
 
-    class Config:
-        populate_by_name = True
+    model_config = ConfigDict(populate_by_name=True)
 
 
 class ApiKey(BaseModel):
@@ -745,8 +728,7 @@ class ApiKey(BaseModel):
     )
     is_revoked: bool = Field(default=False, alias="isRevoked", description="Whether revoked")
 
-    class Config:
-        populate_by_name = True
+    model_config = ConfigDict(populate_by_name=True)
 
 
 # ============================================================================
