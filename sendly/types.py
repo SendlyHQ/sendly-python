@@ -891,3 +891,119 @@ class TemplatePreview(BaseModel):
     original_text: str = Field(..., description="Original text")
     preview_text: str = Field(..., description="Preview text")
     variables: List[Dict[str, Any]] = Field(default_factory=list, description="Variables")
+
+
+# ============================================================================
+# Campaigns
+# ============================================================================
+
+
+class CampaignStatus(str, Enum):
+    """Campaign status"""
+
+    DRAFT = "draft"
+    SCHEDULED = "scheduled"
+    SENDING = "sending"
+    SENT = "sent"
+    PAUSED = "paused"
+    CANCELLED = "cancelled"
+    FAILED = "failed"
+
+
+class Campaign(BaseModel):
+    """A bulk SMS campaign"""
+
+    id: str = Field(..., description="Unique campaign identifier")
+    name: str = Field(..., description="Campaign name")
+    text: str = Field(..., description="Message text with optional {{variables}}")
+    template_id: Optional[str] = Field(default=None, description="Template ID if using a template")
+    contact_list_ids: List[str] = Field(default_factory=list, description="Contact list IDs")
+    status: str = Field(..., description="Current status")
+    recipient_count: int = Field(default=0, description="Total recipients")
+    sent_count: int = Field(default=0, description="Messages sent")
+    delivered_count: int = Field(default=0, description="Messages delivered")
+    failed_count: int = Field(default=0, description="Messages failed")
+    estimated_credits: int = Field(default=0, description="Estimated credits needed")
+    credits_used: int = Field(default=0, description="Credits actually used")
+    scheduled_at: Optional[str] = Field(default=None, description="Scheduled send time")
+    timezone: Optional[str] = Field(default=None, description="Timezone for scheduled send")
+    started_at: Optional[str] = Field(default=None, description="When campaign started sending")
+    completed_at: Optional[str] = Field(default=None, description="When campaign finished")
+    created_at: str = Field(..., description="Creation timestamp")
+    updated_at: str = Field(..., description="Last update timestamp")
+
+
+class CampaignListResponse(BaseModel):
+    """Response from listing campaigns"""
+
+    campaigns: List[Campaign] = Field(..., description="List of campaigns")
+    total: int = Field(..., description="Total count")
+    limit: int = Field(..., description="Current limit")
+    offset: int = Field(..., description="Current offset")
+
+
+class CampaignPreview(BaseModel):
+    """Campaign preview with recipient count and cost estimate"""
+
+    id: str = Field(..., description="Campaign ID")
+    recipient_count: int = Field(..., description="Total recipients")
+    estimated_segments: int = Field(..., description="Estimated segments")
+    estimated_credits: int = Field(..., description="Estimated credits needed")
+    current_balance: int = Field(..., description="Current credit balance")
+    has_enough_credits: bool = Field(..., description="Whether user has enough credits")
+    breakdown: Optional[List[Dict[str, Any]]] = Field(
+        default=None, description="Breakdown by country/tier"
+    )
+
+
+# ============================================================================
+# Contacts
+# ============================================================================
+
+
+class Contact(BaseModel):
+    """A contact in the address book"""
+
+    id: str = Field(..., description="Unique contact identifier")
+    phone_number: str = Field(..., description="Phone number in E.164 format")
+    name: Optional[str] = Field(default=None, description="Contact name")
+    email: Optional[str] = Field(default=None, description="Contact email")
+    metadata: Optional[Dict[str, Any]] = Field(default=None, description="Custom metadata")
+    opted_out: bool = Field(default=False, description="Whether contact has opted out")
+    created_at: str = Field(..., description="Creation timestamp")
+    updated_at: Optional[str] = Field(default=None, description="Last update timestamp")
+    lists: Optional[List[Dict[str, str]]] = Field(
+        default=None, description="Lists the contact belongs to"
+    )
+
+
+class ContactListResponse(BaseModel):
+    """Response from listing contacts"""
+
+    contacts: List[Contact] = Field(..., description="List of contacts")
+    total: int = Field(..., description="Total count")
+    limit: int = Field(..., description="Current limit")
+    offset: int = Field(..., description="Current offset")
+
+
+class ContactList(BaseModel):
+    """A contact list for organizing contacts"""
+
+    id: str = Field(..., description="Unique list identifier")
+    name: str = Field(..., description="List name")
+    description: Optional[str] = Field(default=None, description="List description")
+    contact_count: int = Field(default=0, description="Number of contacts in the list")
+    created_at: str = Field(..., description="Creation timestamp")
+    updated_at: Optional[str] = Field(default=None, description="Last update timestamp")
+    contacts: Optional[List[Dict[str, Any]]] = Field(
+        default=None, description="Contacts in the list (when fetching single list)"
+    )
+    contacts_total: Optional[int] = Field(
+        default=None, description="Total contacts in list (for pagination)"
+    )
+
+
+class ContactListsResponse(BaseModel):
+    """Response from listing contact lists"""
+
+    lists: List[ContactList] = Field(..., description="List of contact lists")

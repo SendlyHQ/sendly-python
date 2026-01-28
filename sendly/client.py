@@ -7,10 +7,12 @@ Main entry point for the Sendly SDK.
 from typing import Any, Optional, Union
 
 from .resources.account import AccountResource, AsyncAccountResource
+from .resources.campaigns import AsyncCampaignsResource, CampaignsResource
+from .resources.contacts import AsyncContactsResource, ContactsResource
 from .resources.messages import AsyncMessagesResource, MessagesResource
+from .resources.templates import AsyncTemplatesResource, TemplatesResource
+from .resources.verify import AsyncVerifyResource, VerifyResource
 from .resources.webhooks import AsyncWebhooksResource, WebhooksResource
-from .resources.verify import VerifyResource, AsyncVerifyResource
-from .resources.templates import TemplatesResource, AsyncTemplatesResource
 from .types import RateLimitInfo, SendlyConfig
 from .utils.http import AsyncHttpClient, HttpClient
 
@@ -97,6 +99,8 @@ class Sendly:
         self.account = AccountResource(self._http)
         self.verify = VerifyResource(self._http)
         self.templates = TemplatesResource(self._http)
+        self.campaigns = CampaignsResource(self._http)
+        self.contacts = ContactsResource(self._http)
 
     def __enter__(self) -> "Sendly":
         return self
@@ -219,6 +223,8 @@ class AsyncSendly:
         self.account = AsyncAccountResource(self._http)
         self.verify = AsyncVerifyResource(self._http)
         self.templates = AsyncTemplatesResource(self._http)
+        self.campaigns = AsyncCampaignsResource(self._http)
+        self.contacts = AsyncContactsResource(self._http)
 
     async def __aenter__(self) -> "AsyncSendly":
         return self

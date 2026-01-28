@@ -1,10 +1,16 @@
 """Sendly SDK Resources"""
 
+from .campaigns import AsyncCampaignsResource, CampaignsResource
+from .contacts import AsyncContactsResource, ContactsResource
 from .messages import AsyncMessagesResource, MessagesResource
-from .verify import AsyncVerifyResource, VerifyResource
 from .templates import AsyncTemplatesResource, TemplatesResource
+from .verify import AsyncVerifyResource, VerifyResource
 
 __all__ = [
+    "CampaignsResource",
+    "AsyncCampaignsResource",
+    "ContactsResource",
+    "AsyncContactsResource",
     "MessagesResource",
     "AsyncMessagesResource",
     "VerifyResource",
