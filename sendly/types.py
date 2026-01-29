@@ -954,6 +954,19 @@ class CampaignPreview(BaseModel):
     breakdown: Optional[List[Dict[str, Any]]] = Field(
         default=None, description="Breakdown by country/tier"
     )
+    blocked_count: Optional[int] = Field(
+        default=None, description="Recipients blocked due to destination restrictions"
+    )
+    sendable_count: Optional[int] = Field(
+        default=None, description="Recipients that can be reached"
+    )
+    by_country: Optional[Dict[str, Any]] = Field(
+        default=None, description="Per-country breakdown with access info"
+    )
+    warnings: Optional[List[str]] = Field(default=None, description="Validation warnings")
+    messaging_profile: Optional[Dict[str, Any]] = Field(
+        default=None, description="Messaging profile access info"
+    )
 
 
 # ============================================================================
