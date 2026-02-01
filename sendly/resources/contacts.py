@@ -9,6 +9,8 @@ from ..types import (
     ContactList,
     ContactListResponse,
     ContactListsResponse,
+    ImportContactItem,
+    ImportContactsResponse,
 )
 from ..utils.http import AsyncHttpClient, HttpClient
 
@@ -218,6 +220,36 @@ class ContactsResource:
         """Delete a contact"""
         self._http.request("DELETE", f"/contacts/{contact_id}")
 
+    def import_contacts(
+        self,
+        contacts: List[ImportContactItem],
+        *,
+        list_id: Optional[str] = None,
+        opted_in_at: Optional[str] = None,
+    ) -> ImportContactsResponse:
+        """Bulk import contacts
+
+        Args:
+            contacts: List of ImportContactItem objects
+            list_id: Optional list ID to add imported contacts to
+            opted_in_at: Batch consent date (ISO 8601)
+        """
+        body: Dict[str, Any] = {
+            "contacts": [c.model_dump(exclude_none=True) for c in contacts],
+        }
+        if list_id:
+            body["listId"] = list_id
+        if opted_in_at:
+            body["optedInAt"] = opted_in_at
+
+        data = self._http.request("POST", "/contacts/import", json=body)
+        return ImportContactsResponse(
+            imported=data["imported"],
+            skipped_duplicates=data["skippedDuplicates"],
+            errors=data.get("errors", []),
+            total_errors=data.get("totalErrors", 0),
+        )
+
     def _transform_contact(self, data: Dict[str, Any]) -> Contact:
         lists = None
         if "lists" in data and data["lists"]:
@@ -413,6 +445,36 @@ class AsyncContactsResource:
     async def delete(self, contact_id: str) -> None:
         """Delete a contact"""
         await self._http.request("DELETE", f"/contacts/{contact_id}")
+
+    async def import_contacts(
+        self,
+        contacts: List[ImportContactItem],
+        *,
+        list_id: Optional[str] = None,
+        opted_in_at: Optional[str] = None,
+    ) -> ImportContactsResponse:
+        """Bulk import contacts
+
+        Args:
+            contacts: List of ImportContactItem objects
+            list_id: Optional list ID to add imported contacts to
+            opted_in_at: Batch consent date (ISO 8601)
+        """
+        body: Dict[str, Any] = {
+            "contacts": [c.model_dump(exclude_none=True) for c in contacts],
+        }
+        if list_id:
+            body["listId"] = list_id
+        if opted_in_at:
+            body["optedInAt"] = opted_in_at
+
+        data = await self._http.request("POST", "/contacts/import", json=body)
+        return ImportContactsResponse(
+            imported=data["imported"],
+            skipped_duplicates=data["skippedDuplicates"],
+            errors=data.get("errors", []),
+            total_errors=data.get("totalErrors", 0),
+        )
 
     def _transform_contact(self, data: Dict[str, Any]) -> Contact:
         lists = None

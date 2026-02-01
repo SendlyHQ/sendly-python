@@ -1020,3 +1020,21 @@ class ContactListsResponse(BaseModel):
     """Response from listing contact lists"""
 
     lists: List[ContactList] = Field(..., description="List of contact lists")
+
+
+class ImportContactItem(BaseModel):
+    """A single contact to import"""
+
+    phone: str = Field(..., description="Phone number in E.164 format")
+    name: Optional[str] = Field(default=None, description="Contact name")
+    email: Optional[str] = Field(default=None, description="Contact email")
+    opted_in_at: Optional[str] = Field(default=None, description="Consent date (ISO 8601)")
+
+
+class ImportContactsResponse(BaseModel):
+    """Response from bulk importing contacts"""
+
+    imported: int = Field(..., description="Number of contacts successfully imported")
+    skipped_duplicates: int = Field(..., description="Number of duplicates skipped")
+    errors: List[dict] = Field(default_factory=list, description="Import errors")
+    total_errors: int = Field(default=0, description="Total number of errors")
