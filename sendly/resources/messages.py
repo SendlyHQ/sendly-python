@@ -51,6 +51,7 @@ class MessagesResource:
         text: str,
         from_: Optional[str] = None,
         message_type: Optional[str] = None,
+        metadata: Optional[Dict[str, Any]] = None,
         **kwargs: Any,
     ) -> Message:
         """
@@ -94,6 +95,8 @@ class MessagesResource:
             body["from"] = from_
         if message_type:
             body["messageType"] = message_type
+        if metadata:
+            body["metadata"] = metadata
 
         # Make API request
         data = self._http.request(
@@ -256,6 +259,7 @@ class MessagesResource:
         scheduled_at: str,
         from_: Optional[str] = None,
         message_type: Optional[str] = None,
+        metadata: Optional[Dict[str, Any]] = None,
         **kwargs: Any,
     ) -> ScheduledMessage:
         """
@@ -294,6 +298,8 @@ class MessagesResource:
             body["from"] = from_
         if message_type:
             body["messageType"] = message_type
+        if metadata:
+            body["metadata"] = metadata
 
         data = self._http.request(
             method="POST",
@@ -414,6 +420,7 @@ class MessagesResource:
         messages: List[Dict[str, str]],
         from_: Optional[str] = None,
         message_type: Optional[str] = None,
+        metadata: Optional[Dict[str, Any]] = None,
         **kwargs: Any,
     ) -> BatchMessageResponse:
         """
@@ -463,6 +470,8 @@ class MessagesResource:
             body["from"] = from_
         if message_type:
             body["messageType"] = message_type
+        if metadata:
+            body["metadata"] = metadata
 
         data = self._http.request(
             method="POST",
@@ -634,6 +643,7 @@ class AsyncMessagesResource:
         text: str,
         from_: Optional[str] = None,
         message_type: Optional[str] = None,
+        metadata: Optional[Dict[str, Any]] = None,
         **kwargs: Any,
     ) -> Message:
         """
@@ -644,6 +654,7 @@ class AsyncMessagesResource:
             text: Message content
             from_: Optional sender ID or phone number
             message_type: Message type for compliance - 'marketing' (default, subject to quiet hours) or 'transactional' (24/7)
+            metadata: Custom JSON metadata to attach to the message (max 4KB)
 
         Returns:
             The created message
@@ -669,6 +680,8 @@ class AsyncMessagesResource:
             body["from"] = from_
         if message_type:
             body["messageType"] = message_type
+        if metadata:
+            body["metadata"] = metadata
 
         # Make API request
         data = await self._http.request(
@@ -821,6 +834,7 @@ class AsyncMessagesResource:
         scheduled_at: str,
         from_: Optional[str] = None,
         message_type: Optional[str] = None,
+        metadata: Optional[Dict[str, Any]] = None,
         **kwargs: Any,
     ) -> ScheduledMessage:
         """
@@ -832,6 +846,7 @@ class AsyncMessagesResource:
             scheduled_at: When to send (ISO 8601, must be > 1 minute in future)
             from_: Optional sender ID (for international destinations only)
             message_type: Message type for compliance - 'marketing' (default, subject to quiet hours) or 'transactional' (24/7)
+            metadata: Custom JSON metadata to attach to the message (max 4KB)
 
         Returns:
             The scheduled message
@@ -850,6 +865,8 @@ class AsyncMessagesResource:
             body["from"] = from_
         if message_type:
             body["messageType"] = message_type
+        if metadata:
+            body["metadata"] = metadata
 
         data = await self._http.request(
             method="POST",
@@ -944,6 +961,7 @@ class AsyncMessagesResource:
         messages: List[Dict[str, str]],
         from_: Optional[str] = None,
         message_type: Optional[str] = None,
+        metadata: Optional[Dict[str, Any]] = None,
         **kwargs: Any,
     ) -> BatchMessageResponse:
         """Send multiple SMS messages in a single batch (async)"""
@@ -973,6 +991,8 @@ class AsyncMessagesResource:
             body["from"] = from_
         if message_type:
             body["messageType"] = message_type
+        if metadata:
+            body["metadata"] = metadata
 
         data = await self._http.request(
             method="POST",
