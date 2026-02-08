@@ -62,6 +62,7 @@ class MessagesResource:
             text: Message content
             from_: Optional sender ID or phone number
             message_type: Message type for compliance - 'marketing' (default, subject to quiet hours) or 'transactional' (24/7)
+            metadata: Custom JSON metadata to attach to the message (max 4KB)
 
         Returns:
             The created message
@@ -271,6 +272,7 @@ class MessagesResource:
             scheduled_at: When to send (ISO 8601, must be > 1 minute in future)
             from_: Optional sender ID (for international destinations only)
             message_type: Message type for compliance - 'marketing' (default, subject to quiet hours) or 'transactional' (24/7)
+            metadata: Custom JSON metadata to attach to the message (max 4KB)
 
         Returns:
             The scheduled message
@@ -427,9 +429,10 @@ class MessagesResource:
         Send multiple SMS messages in a single batch
 
         Args:
-            messages: List of dicts with 'to' and 'text' keys (max 1000)
+            messages: List of dicts with 'to' and 'text' keys (max 1000). Each dict can also include 'metadata' for per-message metadata.
             from_: Optional sender ID (for international destinations only)
             message_type: Message type for compliance - 'marketing' (default, subject to quiet hours) or 'transactional' (24/7)
+            metadata: Shared metadata for all messages in the batch (max 4KB). Per-message metadata takes priority when merging.
 
         Returns:
             Batch response with individual message results

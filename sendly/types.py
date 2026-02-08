@@ -100,6 +100,10 @@ class SendMessageRequest(BaseModel):
         alias="messageType",
         description="Message type: 'marketing' (default, subject to quiet hours) or 'transactional' (24/7)",
     )
+    metadata: Optional[Dict[str, Any]] = Field(
+        default=None,
+        description="Custom JSON metadata to attach to the message (max 4KB)",
+    )
 
     model_config = ConfigDict(populate_by_name=True)
 
@@ -138,6 +142,9 @@ class Message(BaseModel):
     )
     delivered_at: Optional[str] = Field(
         default=None, alias="deliveredAt", description="Delivery timestamp"
+    )
+    metadata: Optional[Dict[str, Any]] = Field(
+        default=None, description="Custom metadata attached to the message"
     )
 
     model_config = ConfigDict(populate_by_name=True)
@@ -201,6 +208,10 @@ class ScheduleMessageRequest(BaseModel):
         default=None,
         alias="messageType",
         description="Message type: 'marketing' (default, subject to quiet hours) or 'transactional' (24/7)",
+    )
+    metadata: Optional[Dict[str, Any]] = Field(
+        default=None,
+        description="Custom JSON metadata to attach to the message (max 4KB)",
     )
 
     model_config = ConfigDict(populate_by_name=True)
@@ -287,6 +298,10 @@ class BatchMessageItem(BaseModel):
 
     to: str = Field(..., description="Destination phone number in E.164 format")
     text: str = Field(..., description="Message content")
+    metadata: Optional[Dict[str, Any]] = Field(
+        default=None,
+        description="Per-message metadata (max 4KB, merged with batch metadata)",
+    )
 
 
 class BatchMessageRequest(BaseModel):
@@ -307,6 +322,10 @@ class BatchMessageRequest(BaseModel):
         default=None,
         alias="messageType",
         description="Message type: 'marketing' (default, subject to quiet hours) or 'transactional' (24/7)",
+    )
+    metadata: Optional[Dict[str, Any]] = Field(
+        default=None,
+        description="Shared metadata for all messages in the batch (max 4KB)",
     )
 
     model_config = ConfigDict(populate_by_name=True)

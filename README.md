@@ -108,6 +108,16 @@ message = client.messages.send(
     text='Hello from MyApp!',
     from_='MYAPP'
 )
+
+# With custom metadata (max 4KB)
+message = client.messages.send(
+    to='+15551234567',
+    text='Your order #12345 has shipped!',
+    metadata={
+        'order_id': '12345',
+        'customer_id': 'cust_abc'
+    }
+)
 ```
 
 ### Listing Messages
