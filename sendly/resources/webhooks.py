@@ -241,6 +241,24 @@ class WebhooksResource:
         response = self._http.request("POST", f"/webhooks/{webhook_id}/test")
         return WebhookTestResult(**response)
 
+    def reset_circuit(self, webhook_id: str) -> dict:
+        """
+        Reset the circuit breaker for a webhook.
+
+        Manually resets an open circuit breaker so deliveries resume immediately
+        instead of waiting for the automatic 5-minute recovery.
+
+        Args:
+            webhook_id: Webhook ID
+
+        Returns:
+            Reset confirmation with updated webhook
+        """
+        if not webhook_id or not webhook_id.startswith("whk_"):
+            raise ValueError("Invalid webhook ID format")
+
+        return self._http.request("POST", f"/webhooks/{webhook_id}/reset-circuit")
+
     def rotate_secret(self, webhook_id: str) -> WebhookSecretRotation:
         """
         Rotate the webhook signing secret.
@@ -401,6 +419,13 @@ class AsyncWebhooksResource:
 
         response = await self._http.request("POST", f"/webhooks/{webhook_id}/test")
         return WebhookTestResult(**response)
+
+    async def reset_circuit(self, webhook_id: str) -> dict:
+        """Reset the circuit breaker for a webhook."""
+        if not webhook_id or not webhook_id.startswith("whk_"):
+            raise ValueError("Invalid webhook ID format")
+
+        return await self._http.request("POST", f"/webhooks/{webhook_id}/reset-circuit")
 
     async def rotate_secret(self, webhook_id: str) -> WebhookSecretRotation:
         """Rotate the webhook signing secret."""
