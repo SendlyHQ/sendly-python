@@ -23,6 +23,7 @@ class MessageStatus(str, Enum):
     DELIVERED = "delivered"
     FAILED = "failed"
     BOUNCED = "bounced"
+    RETRYING = "retrying"
 
 
 class SenderType(str, Enum):
@@ -143,6 +144,10 @@ class Message(BaseModel):
     delivered_at: Optional[str] = Field(
         default=None, alias="deliveredAt", description="Delivery timestamp"
     )
+    error_code: Optional[str] = Field(
+        default=None, alias="errorCode", description="Error code if delivery failed"
+    )
+    retry_count: int = Field(default=0, alias="retryCount", description="Number of delivery retry attempts")
     metadata: Optional[Dict[str, Any]] = Field(
         default=None, description="Custom metadata attached to the message"
     )
@@ -519,6 +524,7 @@ class WebhookEventType(str, Enum):
     MESSAGE_DELIVERED = "message.delivered"
     MESSAGE_FAILED = "message.failed"
     MESSAGE_BOUNCED = "message.bounced"
+    MESSAGE_RETRYING = "message.retrying"
 
 
 class WebhookMode(str, Enum):
