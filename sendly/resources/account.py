@@ -106,6 +106,17 @@ class AccountResource:
         response = self._http.request("GET", "/credits/transactions", params=params)
         return [CreditTransaction(**_transform_response(t, TRANSACTION_KEY_MAP)) for t in response]
 
+    def transfer_credits(self, target_organization_id: str, amount: int) -> Dict[str, Any]:
+        if not target_organization_id:
+            raise ValueError("target_organization_id is required")
+        if not isinstance(amount, int) or amount <= 0:
+            raise ValueError("amount must be a positive integer")
+
+        return self._http.request("POST", "/credits/transfer", body={
+            "targetOrganizationId": target_organization_id,
+            "amount": amount,
+        })
+
     def list_api_keys(self) -> List[ApiKey]:
         """
         List API keys for the account.
@@ -214,6 +225,17 @@ class AsyncAccountResource:
 
         response = await self._http.request("GET", "/credits/transactions", params=params)
         return [CreditTransaction(**_transform_response(t, TRANSACTION_KEY_MAP)) for t in response]
+
+    async def transfer_credits(self, target_organization_id: str, amount: int) -> Dict[str, Any]:
+        if not target_organization_id:
+            raise ValueError("target_organization_id is required")
+        if not isinstance(amount, int) or amount <= 0:
+            raise ValueError("amount must be a positive integer")
+
+        return await self._http.request("POST", "/credits/transfer", body={
+            "targetOrganizationId": target_organization_id,
+            "amount": amount,
+        })
 
     async def list_api_keys(self) -> List[ApiKey]:
         """List API keys for the account."""
