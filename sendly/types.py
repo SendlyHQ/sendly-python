@@ -105,6 +105,11 @@ class SendMessageRequest(BaseModel):
         default=None,
         description="Custom JSON metadata to attach to the message (max 4KB)",
     )
+    media_urls: Optional[List[str]] = Field(
+        default=None,
+        alias="mediaUrls",
+        description="List of media URLs for MMS (images, videos, etc.)",
+    )
 
     model_config = ConfigDict(populate_by_name=True)
 
@@ -171,6 +176,22 @@ class ListMessagesOptions(BaseModel):
         le=100,
         description="Maximum number of messages to return",
     )
+
+
+# ============================================================================
+# Media
+# ============================================================================
+
+
+class MediaFile(BaseModel):
+    """An uploaded media file for MMS"""
+
+    model_config = ConfigDict(populate_by_name=True)
+
+    id: str = Field(..., description="Unique media file identifier")
+    url: str = Field(..., description="Public URL of the uploaded media")
+    content_type: str = Field(..., alias="contentType", description="MIME type of the file")
+    size_bytes: int = Field(..., alias="sizeBytes", description="File size in bytes")
 
 
 # ============================================================================

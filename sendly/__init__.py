@@ -46,6 +46,9 @@ from .errors import (
     ValidationError,
 )
 
+# Resources
+from .resources.media import AsyncMediaResource, MediaResource
+
 # Types
 from .types import (
     ALL_SUPPORTED_COUNTRIES,
@@ -62,6 +65,8 @@ from .types import (
     CreditTransaction,
     DeliveryStatus,
     ListMessagesOptions,
+    # Media types
+    MediaFile,
     Message,
     MessageListResponse,
     MessageStatus,
@@ -111,6 +116,7 @@ __all__ = [
     "SendlyConfig",
     "SendMessageRequest",
     "Message",
+    "MediaFile",
     "MessageStatus",
     "SenderType",
     "ListMessagesOptions",
@@ -139,6 +145,9 @@ __all__ = [
     "ALL_SUPPORTED_COUNTRIES",
     "SANDBOX_TEST_NUMBERS",
     "SandboxTestNumbers",
+    # Media resources
+    "MediaResource",
+    "AsyncMediaResource",
     # Errors
     "SendlyError",
     "AuthenticationError",

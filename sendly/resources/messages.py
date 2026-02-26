@@ -52,6 +52,7 @@ class MessagesResource:
         from_: Optional[str] = None,
         message_type: Optional[str] = None,
         metadata: Optional[Dict[str, Any]] = None,
+        media_urls: Optional[List[str]] = None,
         **kwargs: Any,
     ) -> Message:
         """
@@ -98,6 +99,8 @@ class MessagesResource:
             body["messageType"] = message_type
         if metadata:
             body["metadata"] = metadata
+        if media_urls:
+            body["mediaUrls"] = media_urls
 
         # Make API request
         data = self._http.request(
@@ -647,6 +650,7 @@ class AsyncMessagesResource:
         from_: Optional[str] = None,
         message_type: Optional[str] = None,
         metadata: Optional[Dict[str, Any]] = None,
+        media_urls: Optional[List[str]] = None,
         **kwargs: Any,
     ) -> Message:
         """
@@ -685,6 +689,8 @@ class AsyncMessagesResource:
             body["messageType"] = message_type
         if metadata:
             body["metadata"] = metadata
+        if media_urls:
+            body["mediaUrls"] = media_urls
 
         # Make API request
         data = await self._http.request(
