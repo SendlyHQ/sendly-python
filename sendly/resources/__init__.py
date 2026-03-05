@@ -2,6 +2,7 @@
 
 from .campaigns import AsyncCampaignsResource, CampaignsResource
 from .contacts import AsyncContactsResource, ContactsResource
+from .enterprise import AsyncEnterpriseResource, EnterpriseResource
 from .media import AsyncMediaResource, MediaResource
 from .messages import AsyncMessagesResource, MessagesResource
 from .templates import AsyncTemplatesResource, TemplatesResource
@@ -12,6 +13,8 @@ __all__ = [
     "AsyncCampaignsResource",
     "ContactsResource",
     "AsyncContactsResource",
+    "EnterpriseResource",
+    "AsyncEnterpriseResource",
     "MediaResource",
     "AsyncMediaResource",
     "MessagesResource",

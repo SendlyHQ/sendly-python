@@ -562,6 +562,88 @@ List sent messages.
 
 Get a specific message by ID.
 
+## Enterprise
+
+The Enterprise API lets you programmatically manage workspaces, verification, credits, and API keys for multi-tenant platforms. Requires an enterprise master key (`sk_live_v1_master_*`).
+
+### Quick Provision
+
+Create a fully configured workspace in a single call:
+
+```python
+from sendly import Sendly
+
+client = Sendly('sk_live_v1_master_YOUR_KEY')
+
+# Inherit verification from an existing workspace (fastest)
+result = client.enterprise.provision({
+    "name": "Acme Insurance - Austin",
+    "sourceWorkspaceId": "ws_verified",
+    "creditAmount": 5000,
+    "creditSourceWorkspaceId": "ws_pool",
+    "keyName": "Production",
+    "keyType": "live",
+    "generateOptInPage": True
+})
+
+print(result["workspace"]["id"])
+print(result["apiKey"]["rawKey"])
+print(result["optInPage"]["url"])
+```
+
+Three provisioning modes:
+
+| Mode | Params | Description |
+|------|--------|-------------|
+| **Inherit** | `sourceWorkspaceId` | Shares toll-free number from verified workspace |
+| **Inherit + New Number** | `sourceWorkspaceId` + `inheritWithNewNumber: True` | Copies business info, purchases new number |
+| **Fresh** | `verification: { ... }` | Full business details, new number + carrier approval |
+
+### Workspace Management
+
+```python
+ws = client.enterprise.workspaces.create(name="Acme Insurance")
+
+result = client.enterprise.workspaces.list()
+for ws in result.workspaces:
+    print(f"{ws.name}: {ws.verification_status}")
+
+detail = client.enterprise.workspaces.get("ws_xxx")
+
+client.enterprise.workspaces.delete("ws_xxx")
+```
+
+### Credits & API Keys
+
+```python
+client.enterprise.workspaces.transfer_credits("ws_dest", {
+    "source_workspace_id": "ws_source",
+    "amount": 5000
+})
+
+key = client.enterprise.workspaces.create_key("ws_xxx", {
+    "name": "Production",
+    "type": "live"
+})
+print(key.raw_key)
+
+client.enterprise.workspaces.revoke_key("ws_xxx", "key_abc")
+```
+
+### Webhooks & Analytics
+
+```python
+client.enterprise.webhooks.set(url="https://yourapp.com/webhooks")
+
+overview = client.enterprise.analytics.overview()
+messages = client.enterprise.analytics.messages(period="30d")
+delivery = client.enterprise.analytics.delivery()
+```
+
+Full enterprise docs: [sendly.live/docs/enterprise](https://sendly.live/docs/enterprise)
+
+---
+
 ## Support
 
 - 📚 [Documentation](https://sendly.live/docs)

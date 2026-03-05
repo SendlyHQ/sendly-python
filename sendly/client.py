@@ -9,6 +9,7 @@ from typing import Any, Optional, Union
 from .resources.account import AccountResource, AsyncAccountResource
 from .resources.campaigns import AsyncCampaignsResource, CampaignsResource
 from .resources.contacts import AsyncContactsResource, ContactsResource
+from .resources.enterprise import AsyncEnterpriseResource, EnterpriseResource
 from .resources.media import AsyncMediaResource, MediaResource
 from .resources.messages import AsyncMessagesResource, MessagesResource
 from .resources.templates import AsyncTemplatesResource, TemplatesResource
@@ -103,6 +104,7 @@ class Sendly:
         self.campaigns = CampaignsResource(self._http)
         self.contacts = ContactsResource(self._http)
         self.media = MediaResource(self._http)
+        self.enterprise = EnterpriseResource(self._http)
 
     def __enter__(self) -> "Sendly":
         return self
@@ -228,6 +230,7 @@ class AsyncSendly:
         self.campaigns = AsyncCampaignsResource(self._http)
         self.contacts = AsyncContactsResource(self._http)
         self.media = AsyncMediaResource(self._http)
+        self.enterprise = AsyncEnterpriseResource(self._http)
 
     async def __aenter__(self) -> "AsyncSendly":
         return self

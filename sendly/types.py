@@ -152,7 +152,9 @@ class Message(BaseModel):
     error_code: Optional[str] = Field(
         default=None, alias="errorCode", description="Error code if delivery failed"
     )
-    retry_count: int = Field(default=0, alias="retryCount", description="Number of delivery retry attempts")
+    retry_count: int = Field(
+        default=0, alias="retryCount", description="Number of delivery retry attempts"
+    )
     metadata: Optional[Dict[str, Any]] = Field(
         default=None, description="Custom metadata attached to the message"
     )
@@ -1084,3 +1086,318 @@ class ImportContactsResponse(BaseModel):
     skipped_duplicates: int = Field(..., description="Number of duplicates skipped")
     errors: List[dict] = Field(default_factory=list, description="Import errors")
     total_errors: int = Field(default=0, description="Total number of errors")
+
+
+# ============================================================================
+# Enterprise
+# ============================================================================
+
+
+class EnterpriseWorkspaceSummary(BaseModel):
+    id: str
+    name: str
+    slug: str
+    verification_status: Optional[str] = Field(default=None, alias="verificationStatus")
+    verification_type: Optional[str] = Field(default=None, alias="verificationType")
+    toll_free_number: Optional[str] = Field(default=None, alias="tollFreeNumber")
+    credit_balance: int = Field(default=0, alias="creditBalance")
+
+    model_config = ConfigDict(populate_by_name=True)
+
+
+class EnterpriseAccount(BaseModel):
+    id: str
+    max_workspaces: int = Field(..., alias="maxWorkspaces")
+    workspace_count: int = Field(..., alias="workspaceCount")
+    workspaces: List[EnterpriseWorkspaceSummary] = Field(default_factory=list)
+    metadata: Dict[str, Any] = Field(default_factory=dict)
+
+    model_config = ConfigDict(populate_by_name=True)
+
+
+class EnterpriseWorkspace(BaseModel):
+    id: str
+    name: str
+    slug: str
+    verification_status: Optional[str] = Field(default=None, alias="verificationStatus")
+    verification_type: Optional[str] = Field(default=None, alias="verificationType")
+    toll_free_number: Optional[str] = Field(default=None, alias="tollFreeNumber")
+    credit_balance: int = Field(default=0, alias="creditBalance")
+    key_count: int = Field(default=0, alias="keyCount")
+    messages_30d: int = Field(default=0, alias="messages30d")
+    delivered_30d: int = Field(default=0, alias="delivered30d")
+    failed_30d: int = Field(default=0, alias="failed30d")
+    created_at: str = Field(..., alias="createdAt")
+
+    model_config = ConfigDict(populate_by_name=True)
+
+
+class EnterpriseWorkspaceKey(BaseModel):
+    id: str
+    name: str
+    key_prefix: str = Field(..., alias="keyPrefix")
+    created_at: str = Field(..., alias="createdAt")
+    last_used_at: Optional[str] = Field(default=None, alias="lastUsedAt")
+
+    model_config = ConfigDict(populate_by_name=True)
+
+
+class EnterpriseWorkspaceDetail(BaseModel):
+    id: str
+    name: str
+    slug: str
+    verification_status: Optional[str] = Field(default=None, alias="verificationStatus")
+    toll_free_number: Optional[str] = Field(default=None, alias="tollFreeNumber")
+    business_name: Optional[str] = Field(default=None, alias="businessName")
+    credit_balance: int = Field(default=0, alias="creditBalance")
+    keys: List[EnterpriseWorkspaceKey] = Field(default_factory=list)
+    messages_30d: int = Field(default=0, alias="messages30d")
+    delivered_30d: int = Field(default=0, alias="delivered30d")
+    failed_30d: int = Field(default=0, alias="failed30d")
+    delivery_rate: float = Field(default=0, alias="deliveryRate")
+
+    model_config = ConfigDict(populate_by_name=True)
+
+
+class EnterpriseWorkspaceListResponse(BaseModel):
+    workspaces: List[EnterpriseWorkspace] = Field(default_factory=list)
+    max_workspaces: int = Field(..., alias="maxWorkspaces")
+    workspaces_used: int = Field(..., alias="workspacesUsed")
+
+    model_config = ConfigDict(populate_by_name=True)
+
+
+class TransferCreditsResult(BaseModel):
+    success: bool
+    source_balance: int = Field(..., alias="sourceBalance")
+    target_balance: int = Field(..., alias="targetBalance")
+
+    model_config = ConfigDict(populate_by_name=True)
+
+
+class CreatedApiKey(BaseModel):
+    id: str
+    name: str
+    key: str
+    key_prefix: str = Field(..., alias="keyPrefix")
+    created_at: str = Field(..., alias="createdAt")
+
+    model_config = ConfigDict(populate_by_name=True)
+
+
+class WorkspaceCredits(BaseModel):
+    balance: int
+    lifetime_credits: int = Field(..., alias="lifetimeCredits")
+
+    model_config = ConfigDict(populate_by_name=True)
+
+
+class EnterpriseWebhook(BaseModel):
+    url: str
+
+
+class EnterpriseWebhookTestResult(BaseModel):
+    success: bool
+    status_code: Optional[int] = Field(default=None, alias="statusCode")
+    status_text: Optional[str] = Field(default=None, alias="statusText")
+    error: Optional[str] = Field(default=None)
+
+    model_config = ConfigDict(populate_by_name=True)
+
+
+class AnalyticsOverview(BaseModel):
+    total_messages: int = Field(..., alias="totalMessages")
+    delivered_messages: int = Field(..., alias="deliveredMessages")
+    failed_messages: int = Field(..., alias="failedMessages")
+    delivery_rate: float = Field(..., alias="deliveryRate")
+    total_credits_used: int = Field(..., alias="totalCreditsUsed")
+    active_workspaces: int = Field(..., alias="activeWorkspaces")
+
+    model_config = ConfigDict(populate_by_name=True)
+
+
+class MessageAnalyticsDataPoint(BaseModel):
+    date: str
+    sent: int
+    delivered: int
+    failed: int
+
+
+class MessageAnalytics(BaseModel):
+    period: str
+    data: List[MessageAnalyticsDataPoint] = Field(default_factory=list)
+
+
+class DeliveryAnalyticsItem(BaseModel):
+    workspace_id: str = Field(..., alias="workspaceId")
+    name: str
+    sent: int
+    delivered: int
+    failed: int
+    rate: float
+
+    model_config = ConfigDict(populate_by_name=True)
+
+
+class CreditAnalyticsDataPoint(BaseModel):
+    date: str
+    used: int
+    transferred: int
+    purchased: int
+
+
+class CreditAnalytics(BaseModel):
+    period: str
+    data: List[CreditAnalyticsDataPoint] = Field(default_factory=list)
+
+
+class OptInPage(BaseModel):
+    id: str
+    slug: str
+    url: str
+    business_name: str = Field(..., alias="businessName")
+    use_case: Optional[str] = Field(default=None, alias="useCase")
+    is_active: bool = Field(default=True, alias="isActive")
+    view_count: int = Field(default=0, alias="viewCount")
+    logo_url: Optional[str] = Field(default=None, alias="logoUrl")
+    header_color: Optional[str] = Field(default=None, alias="headerColor")
+    button_color: Optional[str] = Field(default=None, alias="buttonColor")
+    custom_headline: Optional[str] = Field(default=None, alias="customHeadline")
+    created_at: str = Field(..., alias="createdAt")
+
+    model_config = ConfigDict(populate_by_name=True)
+
+
+class CreateOptInPageResult(BaseModel):
+    id: str
+    slug: str
+    url: str
+    business_name: str = Field(..., alias="businessName")
+
+    model_config = ConfigDict(populate_by_name=True)
+
+
+class WorkspaceWebhook(BaseModel):
+    id: str
+    url: str
+    events: List[str] = Field(default_factory=list)
+    is_active: bool = Field(default=True, alias="isActive")
+    created_at: str = Field(..., alias="createdAt")
+
+    model_config = ConfigDict(populate_by_name=True)
+
+
+class SetWorkspaceWebhookResult(BaseModel):
+    id: str
+    url: str
+    events: List[str] = Field(default_factory=list)
+    secret: Optional[str] = Field(default=None)
+    created: Optional[bool] = Field(default=None)
+    updated: Optional[bool] = Field(default=None)
+
+
+class SuspendWorkspaceResult(BaseModel):
+    id: str
+    status: str
+    suspended_at: str = Field(..., alias="suspendedAt")
+
+    model_config = ConfigDict(populate_by_name=True)
+
+
+class ResumeWorkspaceResult(BaseModel):
+    id: str
+    status: str
+
+
+class AutoTopUpSettings(BaseModel):
+    enabled: bool
+    threshold: int
+    amount: int
+    source_workspace_id: Optional[str] = Field(default=None, alias="sourceWorkspaceId")
+
+    model_config = ConfigDict(populate_by_name=True)
+
+
+class WorkspaceBillingItem(BaseModel):
+    id: str
+    name: str
+    credits_used: int = Field(..., alias="creditsUsed")
+    credits_purchased: int = Field(..., alias="creditsPurchased")
+    credits_transferred_in: int = Field(..., alias="creditsTransferredIn")
+    credits_transferred_out: int = Field(..., alias="creditsTransferredOut")
+    messages_sent: int = Field(..., alias="messagesSent")
+    messages_delivered: int = Field(..., alias="messagesDelivered")
+    workspace_fee: int = Field(..., alias="workspaceFee")
+    allocated_platform_fee: int = Field(..., alias="allocatedPlatformFee")
+    total_cost: int = Field(..., alias="totalCost")
+
+    model_config = ConfigDict(populate_by_name=True)
+
+
+class BillingBreakdownSummary(BaseModel):
+    platform_fee: int = Field(..., alias="platformFee")
+    total_workspace_fees: int = Field(..., alias="totalWorkspaceFees")
+    total_credits_used: int = Field(..., alias="totalCreditsUsed")
+    total_cost: int = Field(..., alias="totalCost")
+
+    model_config = ConfigDict(populate_by_name=True)
+
+
+class BillingBreakdown(BaseModel):
+    period: str
+    summary: BillingBreakdownSummary
+    workspaces: List[WorkspaceBillingItem] = Field(default_factory=list)
+
+
+class BulkProvisionResultItem(BaseModel):
+    name: str
+    status: str
+    workspace_id: Optional[str] = Field(default=None, alias="workspaceId")
+    slug: Optional[str] = Field(default=None)
+    warning: Optional[str] = Field(default=None)
+    error: Optional[str] = Field(default=None)
+
+    model_config = ConfigDict(populate_by_name=True)
+
+
+class BulkProvisionSummary(BaseModel):
+    total: int
+    succeeded: int
+    failed: int
+
+
+class BulkProvisionResult(BaseModel):
+    results: List[BulkProvisionResultItem] = Field(default_factory=list)
+    summary: BulkProvisionSummary
+
+
+class DnsRecord(BaseModel):
+    type: str
+    name: str
+    value: str
+
+
+class SetCustomDomainResult(BaseModel):
+    domain: str
+    verified: bool
+    dns_instructions: Dict[str, DnsRecord] = Field(..., alias="dnsInstructions")
+
+    model_config = ConfigDict(populate_by_name=True)
+
+
+class Invitation(BaseModel):
+    id: str
+    email: str
+    role: str
+    status: str
+    expires_at: str = Field(..., alias="expiresAt")
+
+    model_config = ConfigDict(populate_by_name=True)
+
+
+class QuotaSettings(BaseModel):
+    monthly_message_quota: Optional[int] = Field(default=None, alias="monthlyMessageQuota")
+    messages_this_month: int = Field(..., alias="messagesThisMonth")
+    quota_reset_at: Optional[str] = Field(default=None, alias="quotaResetAt")
+
+    model_config = ConfigDict(populate_by_name=True)
