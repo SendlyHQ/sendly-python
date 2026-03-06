@@ -456,7 +456,7 @@ class RateLimitInfo(BaseModel):
 
 # Credits per SMS by tier
 CREDITS_PER_SMS: Dict[PricingTier, int] = {
-    PricingTier.DOMESTIC: 1,
+    PricingTier.DOMESTIC: 2,
     PricingTier.TIER1: 8,
     PricingTier.TIER2: 12,
     PricingTier.TIER3: 16,

@@ -452,7 +452,7 @@ message = client.messages.send(
 from sendly import CREDITS_PER_SMS, SUPPORTED_COUNTRIES, PricingTier
 
 # Credits per SMS by tier
-print(CREDITS_PER_SMS[PricingTier.DOMESTIC])  # 1 (US/Canada)
+print(CREDITS_PER_SMS[PricingTier.DOMESTIC])  # 2 (US/Canada)
 print(CREDITS_PER_SMS[PricingTier.TIER1])     # 8 (UK, Poland, etc.)
 print(CREDITS_PER_SMS[PricingTier.TIER2])     # 12 (France, Japan, etc.)
 print(CREDITS_PER_SMS[PricingTier.TIER3])     # 16 (Germany, Italy, etc.)
