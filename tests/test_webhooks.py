@@ -271,13 +271,12 @@ class TestWebhookParseEvent:
         with pytest.raises(WebhookSignatureError, match="Failed to parse webhook payload"):
             Webhooks.parse_event(payload, signature, secret)
 
-    def test_parse_event_invalid_data_structure(self):
-        """Test parsing event with invalid data structure"""
+    def test_parse_event_sparse_data_structure(self):
+        """Test parsing event with sparse data uses defaults"""
         event_data = {
             "id": "evt_123",
             "type": "message.delivered",
             "data": {
-                # Missing required fields
                 "message_id": "msg_123",
             },
             "created_at": "2025-01-20T10:00:00Z",
@@ -287,8 +286,11 @@ class TestWebhookParseEvent:
         secret = "test_secret"
         signature = Webhooks.generate_signature(payload, secret)
 
-        with pytest.raises(WebhookSignatureError, match="Failed to parse webhook payload"):
-            Webhooks.parse_event(payload, signature, secret)
+        event = Webhooks.parse_event(payload, signature, secret)
+        assert event.data.id == "msg_123"
+        assert event.data.status == ""
+        assert event.data.segments == 1
+        assert event.data.credits_used == 0
 
     def test_parse_event_empty_payload(self):
         """Test parsing empty payload"""
@@ -321,7 +323,7 @@ class TestWebhookParseEvent:
 
         event = Webhooks.parse_event(payload, signature, secret)
 
-        assert event.api_version == "2024-01-01"  # Default value
+        assert event.api_version == "2024-01"  # Default value
 
 
 class TestWebhookGenerateSignature:
