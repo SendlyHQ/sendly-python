@@ -71,6 +71,10 @@ class SendlyConfig(BaseModel):
         default=3,
         description="Maximum number of retry attempts",
     )
+    organization_id: Optional[str] = Field(
+        default=None,
+        description="Organization ID for multi-workspace support",
+    )
 
 
 # ============================================================================

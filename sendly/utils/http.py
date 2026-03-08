@@ -5,6 +5,7 @@ Handles HTTP requests to the Sendly API with retries and rate limiting.
 """
 
 import asyncio
+import os
 import random
 import re
 import time
@@ -37,11 +38,13 @@ class HttpClient:
         base_url: str = DEFAULT_BASE_URL,
         timeout: float = DEFAULT_TIMEOUT,
         max_retries: int = DEFAULT_MAX_RETRIES,
+        organization_id: Optional[str] = None,
     ):
         self.api_key = api_key
         self.base_url = base_url.rstrip("/")
         self.timeout = timeout
         self.max_retries = max_retries
+        self.organization_id = organization_id or os.environ.get("SENDLY_ORG_ID")
         self._rate_limit_info: Optional[RateLimitInfo] = None
         self._client: Optional[httpx.Client] = None
 
@@ -86,12 +89,15 @@ class HttpClient:
 
     def _build_headers(self) -> Dict[str, str]:
         """Build request headers"""
-        return {
+        headers = {
             "Authorization": f"Bearer {self.api_key}",
             "Content-Type": "application/json",
             "Accept": "application/json",
             "User-Agent": f"sendly-python/{SDK_VERSION}",
         }
+        if self.organization_id:
+            headers["X-Organization-Id"] = self.organization_id
+        return headers
 
     def _update_rate_limit_info(self, headers: httpx.Headers) -> None:
         """Update rate limit info from response headers"""
@@ -202,11 +208,13 @@ class AsyncHttpClient:
         base_url: str = DEFAULT_BASE_URL,
         timeout: float = DEFAULT_TIMEOUT,
         max_retries: int = DEFAULT_MAX_RETRIES,
+        organization_id: Optional[str] = None,
     ):
         self.api_key = api_key
         self.base_url = base_url.rstrip("/")
         self.timeout = timeout
         self.max_retries = max_retries
+        self.organization_id = organization_id or os.environ.get("SENDLY_ORG_ID")
         self._rate_limit_info: Optional[RateLimitInfo] = None
         self._client: Optional[httpx.AsyncClient] = None
 
@@ -251,12 +259,15 @@ class AsyncHttpClient:
 
     def _build_headers(self) -> Dict[str, str]:
         """Build request headers"""
-        return {
+        headers = {
             "Authorization": f"Bearer {self.api_key}",
             "Content-Type": "application/json",
             "Accept": "application/json",
             "User-Agent": f"sendly-python/{SDK_VERSION}",
         }
+        if self.organization_id:
+            headers["X-Organization-Id"] = self.organization_id
+        return headers
 
     def _update_rate_limit_info(self, headers: httpx.Headers) -> None:
         """Update rate limit info from response headers"""

@@ -61,6 +61,7 @@ class Sendly:
         base_url: str = DEFAULT_BASE_URL,
         timeout: float = DEFAULT_TIMEOUT,
         max_retries: int = DEFAULT_MAX_RETRIES,
+        organization_id: Optional[str] = None,
         config: Optional[SendlyConfig] = None,
     ):
         """
@@ -71,6 +72,7 @@ class Sendly:
             base_url: Base URL for the API (default: https://sendly.live/api/v1)
             timeout: Request timeout in seconds (default: 30)
             max_retries: Maximum retry attempts (default: 3)
+            organization_id: Organization ID for multi-workspace support
             config: Alternative configuration object
         """
         # Handle configuration
@@ -79,6 +81,7 @@ class Sendly:
             base_url = config.base_url
             timeout = config.timeout
             max_retries = config.max_retries
+            organization_id = organization_id or config.organization_id
         elif api_key is None:
             raise ValueError("api_key is required")
 
@@ -93,6 +96,7 @@ class Sendly:
             base_url=base_url,
             timeout=timeout,
             max_retries=max_retries,
+            organization_id=organization_id,
         )
 
         # Initialize resources
@@ -146,6 +150,9 @@ class Sendly:
         """
         return self._http.get_rate_limit_info()
 
+    def set_organization_id(self, org_id: str) -> None:
+        self._http.organization_id = org_id
+
     @property
     def base_url(self) -> str:
         """Get the configured base URL"""
@@ -187,6 +194,7 @@ class AsyncSendly:
         base_url: str = DEFAULT_BASE_URL,
         timeout: float = DEFAULT_TIMEOUT,
         max_retries: int = DEFAULT_MAX_RETRIES,
+        organization_id: Optional[str] = None,
         config: Optional[SendlyConfig] = None,
     ):
         """
@@ -197,6 +205,7 @@ class AsyncSendly:
             base_url: Base URL for the API (default: https://sendly.live/api/v1)
             timeout: Request timeout in seconds (default: 30)
             max_retries: Maximum retry attempts (default: 3)
+            organization_id: Organization ID for multi-workspace support
             config: Alternative configuration object
         """
         # Handle configuration
@@ -205,6 +214,7 @@ class AsyncSendly:
             base_url = config.base_url
             timeout = config.timeout
             max_retries = config.max_retries
+            organization_id = organization_id or config.organization_id
         elif api_key is None:
             raise ValueError("api_key is required")
 
@@ -219,6 +229,7 @@ class AsyncSendly:
             base_url=base_url,
             timeout=timeout,
             max_retries=max_retries,
+            organization_id=organization_id,
         )
 
         # Initialize resources
@@ -259,6 +270,9 @@ class AsyncSendly:
             Rate limit info or None if no requests have been made
         """
         return self._http.get_rate_limit_info()
+
+    def set_organization_id(self, org_id: str) -> None:
+        self._http.organization_id = org_id
 
     @property
     def base_url(self) -> str:
