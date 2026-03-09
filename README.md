@@ -9,7 +9,7 @@
 
 # sendly
 
-Official Python SDK for the [Sendly](https://sendly.live) SMS API.
+Official Python SDK for the [Sendly](https://sendly.live) SMS & MMS API.
 
 ## Installation
 
