@@ -580,14 +580,14 @@ result = client.enterprise.provision({
     "name": "Acme Insurance - Austin",
     "sourceWorkspaceId": "ws_verified",
     "creditAmount": 5000,
-    "creditSourceWorkspaceId": "ws_pool",
+    "creditSourceWorkspaceId": "SOURCE_WORKSPACE_ID",
     "keyName": "Production",
     "keyType": "live",
     "generateOptInPage": True
 })
 
 print(result["workspace"]["id"])
-print(result["apiKey"]["rawKey"])
+print(result["key"]["key"])
 print(result["optInPage"]["url"])
 ```
 
@@ -625,7 +625,7 @@ key = client.enterprise.workspaces.create_key("ws_xxx", {
     "name": "Production",
     "type": "live"
 })
-print(key.raw_key)
+print(key.key)
 
 client.enterprise.workspaces.revoke_key("ws_xxx", "key_abc")
 ```
