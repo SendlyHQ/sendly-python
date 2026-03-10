@@ -417,14 +417,14 @@ class CreditsSubResource:
         self._http = http
 
     def get(self) -> Dict[str, Any]:
-        response = self._http.request("GET", "/enterprise/credits/pool")
+        response = self._http.request("GET", "/enterprise/credits")
         return response
 
     def deposit(self, amount: int, description: Optional[str] = None) -> Dict[str, Any]:
         body: Dict[str, Any] = {"amount": amount}
         if description is not None:
             body["description"] = description
-        response = self._http.request("POST", "/enterprise/credits/pool/deposit", body=body)
+        response = self._http.request("POST", "/enterprise/credits/deposit", body=body)
         return response
 
 
@@ -884,14 +884,14 @@ class AsyncCreditsSubResource:
         self._http = http
 
     async def get(self) -> Dict[str, Any]:
-        response = await self._http.request("GET", "/enterprise/credits/pool")
+        response = await self._http.request("GET", "/enterprise/credits")
         return response
 
     async def deposit(self, amount: int, description: Optional[str] = None) -> Dict[str, Any]:
         body: Dict[str, Any] = {"amount": amount}
         if description is not None:
             body["description"] = description
-        response = await self._http.request("POST", "/enterprise/credits/pool/deposit", body=body)
+        response = await self._http.request("POST", "/enterprise/credits/deposit", body=body)
         return response
 
 
