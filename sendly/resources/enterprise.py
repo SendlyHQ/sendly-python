@@ -412,6 +412,22 @@ class SettingsSubResource:
         return AutoTopUpSettings(**response)
 
 
+class CreditsSubResource:
+    def __init__(self, http: HttpClient):
+        self._http = http
+
+    def get(self) -> Dict[str, Any]:
+        response = self._http.request("GET", "/enterprise/credits/pool")
+        return response
+
+    def deposit(self, amount: int, description: Optional[str] = None) -> Dict[str, Any]:
+        body: Dict[str, Any] = {"amount": amount}
+        if description is not None:
+            body["description"] = description
+        response = self._http.request("POST", "/enterprise/credits/pool/deposit", body=body)
+        return response
+
+
 class BillingSubResource:
     def __init__(self, http: HttpClient):
         self._http = http
@@ -446,6 +462,7 @@ class EnterpriseResource:
         self.analytics = AnalyticsSubResource(http)
         self.settings = SettingsSubResource(http)
         self.billing = BillingSubResource(http)
+        self.credits = CreditsSubResource(http)
 
     def get_account(self) -> EnterpriseAccount:
         response = self._http.request("GET", "/enterprise/account")
@@ -862,6 +879,22 @@ class AsyncSettingsSubResource:
         return AutoTopUpSettings(**response)
 
 
+class AsyncCreditsSubResource:
+    def __init__(self, http: AsyncHttpClient):
+        self._http = http
+
+    async def get(self) -> Dict[str, Any]:
+        response = await self._http.request("GET", "/enterprise/credits/pool")
+        return response
+
+    async def deposit(self, amount: int, description: Optional[str] = None) -> Dict[str, Any]:
+        body: Dict[str, Any] = {"amount": amount}
+        if description is not None:
+            body["description"] = description
+        response = await self._http.request("POST", "/enterprise/credits/pool/deposit", body=body)
+        return response
+
+
 class AsyncBillingSubResource:
     def __init__(self, http: AsyncHttpClient):
         self._http = http
@@ -896,6 +929,7 @@ class AsyncEnterpriseResource:
         self.analytics = AsyncAnalyticsSubResource(http)
         self.settings = AsyncSettingsSubResource(http)
         self.billing = AsyncBillingSubResource(http)
+        self.credits = AsyncCreditsSubResource(http)
 
     async def get_account(self) -> EnterpriseAccount:
         response = await self._http.request("GET", "/enterprise/account")
