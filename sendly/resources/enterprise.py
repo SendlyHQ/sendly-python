@@ -335,7 +335,7 @@ class WebhooksSubResource:
         self._http = http
 
     def set(self, url: str) -> EnterpriseWebhook:
-        response = self._http.request("PUT", "/enterprise/webhooks", body={"url": url})
+        response = self._http.request("POST", "/enterprise/webhooks", body={"url": url})
         return EnterpriseWebhook(**response)
 
     def get(self) -> EnterpriseWebhook:
@@ -348,6 +348,10 @@ class WebhooksSubResource:
     def test(self) -> EnterpriseWebhookTestResult:
         response = self._http.request("POST", "/enterprise/webhooks/test")
         return EnterpriseWebhookTestResult(**response)
+
+    def rotate_secret(self) -> Dict[str, Any]:
+        response = self._http.request("POST", "/enterprise/webhooks/rotate-secret")
+        return response
 
 
 class AnalyticsSubResource:
@@ -802,7 +806,7 @@ class AsyncWebhooksSubResource:
         self._http = http
 
     async def set(self, url: str) -> EnterpriseWebhook:
-        response = await self._http.request("PUT", "/enterprise/webhooks", body={"url": url})
+        response = await self._http.request("POST", "/enterprise/webhooks", body={"url": url})
         return EnterpriseWebhook(**response)
 
     async def get(self) -> EnterpriseWebhook:
@@ -815,6 +819,10 @@ class AsyncWebhooksSubResource:
     async def test(self) -> EnterpriseWebhookTestResult:
         response = await self._http.request("POST", "/enterprise/webhooks/test")
         return EnterpriseWebhookTestResult(**response)
+
+    async def rotate_secret(self) -> Dict[str, Any]:
+        response = await self._http.request("POST", "/enterprise/webhooks/rotate-secret")
+        return response
 
 
 class AsyncAnalyticsSubResource:
