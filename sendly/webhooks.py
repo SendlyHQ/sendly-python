@@ -46,6 +46,13 @@ WebhookEventType = Literal[
     "message.opt_out",
     "message.opt_in",
     "message.undelivered",
+    "verification.created",
+    "verification.delivered",
+    "verification.verified",
+    "verification.expired",
+    "verification.failed",
+    "verification.resent",
+    "verification.delivery_failed",
 ]
 
 # Message status in webhook events
@@ -115,10 +122,32 @@ class WebhookMessageData:
     media_urls: Optional[list] = None
     """Media URLs for MMS messages."""
 
+    retry_count: Optional[int] = None
+
+    metadata: Optional[dict] = None
+
     @property
     def message_id(self) -> str:
         """Backwards-compatible alias for id."""
         return self.id
+
+
+@dataclass
+class WebhookVerificationData:
+    id: str = ""
+    organization_id: Optional[str] = None
+    phone: str = ""
+    status: str = ""
+    delivery_status: str = "queued"
+    attempts: int = 0
+    max_attempts: int = 3
+    expires_at: Optional[Union[str, int]] = None
+    verified_at: Optional[Union[str, int]] = None
+    created_at: Optional[Union[str, int]] = None
+    app_name: Optional[str] = None
+    template_id: Optional[str] = None
+    profile_id: Optional[str] = None
+    metadata: Optional[dict] = None
 
 
 @dataclass
