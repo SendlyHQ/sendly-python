@@ -9,6 +9,7 @@ from typing import Any, Optional, Union
 from .resources.account import AccountResource, AsyncAccountResource
 from .resources.campaigns import AsyncCampaignsResource, CampaignsResource
 from .resources.contacts import AsyncContactsResource, ContactsResource
+from .resources.conversations import AsyncConversationsResource, ConversationsResource
 from .resources.enterprise import AsyncEnterpriseResource, EnterpriseResource
 from .resources.media import AsyncMediaResource, MediaResource
 from .resources.messages import AsyncMessagesResource, MessagesResource
@@ -101,6 +102,7 @@ class Sendly:
 
         # Initialize resources
         self.messages = MessagesResource(self._http)
+        self.conversations = ConversationsResource(self._http)
         self.webhooks = WebhooksResource(self._http)
         self.account = AccountResource(self._http)
         self.verify = VerifyResource(self._http)
@@ -234,6 +236,7 @@ class AsyncSendly:
 
         # Initialize resources
         self.messages = AsyncMessagesResource(self._http)
+        self.conversations = AsyncConversationsResource(self._http)
         self.webhooks = AsyncWebhooksResource(self._http)
         self.account = AsyncAccountResource(self._http)
         self.verify = AsyncVerifyResource(self._http)

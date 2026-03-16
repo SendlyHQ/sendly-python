@@ -54,6 +54,10 @@ from .types import (
     ALL_SUPPORTED_COUNTRIES,
     # Constants
     CREDITS_PER_SMS,
+    # Conversation types
+    Conversation,
+    ConversationListResponse,
+    ConversationWithMessages,
     SANDBOX_TEST_NUMBERS,
     SUPPORTED_COUNTRIES,
     # Account types
@@ -180,6 +184,10 @@ __all__ = [
     "ALL_SUPPORTED_COUNTRIES",
     "SANDBOX_TEST_NUMBERS",
     "SandboxTestNumbers",
+    # Conversation types
+    "Conversation",
+    "ConversationListResponse",
+    "ConversationWithMessages",
     # Enterprise types
     "AnalyticsOverview",
     "AutoTopUpSettings",

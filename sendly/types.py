@@ -139,7 +139,7 @@ class Message(BaseModel):
         default=None, alias="senderType", description="How the message was sent"
     )
     telnyx_message_id: Optional[str] = Field(
-        default=None, alias="telnyxMessageId", description="Telnyx message ID for tracking"
+        default=None, alias="telnyxMessageId", description="Carrier message ID for tracking"
     )
     warning: Optional[str] = Field(
         default=None, description="Warning message (e.g., when 'from' is ignored)"
@@ -1405,3 +1405,61 @@ class QuotaSettings(BaseModel):
     quota_reset_at: Optional[str] = Field(default=None, alias="quotaResetAt")
 
     model_config = ConfigDict(populate_by_name=True)
+
+
+# ============================================================================
+# Conversations
+# ============================================================================
+
+
+ConversationStatus = Literal["active", "closed"]
+
+
+class Conversation(BaseModel):
+    id: str
+    phone_number: str = Field(..., alias="phoneNumber")
+    status: ConversationStatus = "active"
+    unread_count: int = Field(0, alias="unreadCount")
+    message_count: int = Field(0, alias="messageCount")
+    last_message_text: Optional[str] = Field(default=None, alias="lastMessageText")
+    last_message_at: Optional[str] = Field(default=None, alias="lastMessageAt")
+    last_message_direction: Optional[str] = Field(default=None, alias="lastMessageDirection")
+    metadata: Dict[str, Any] = Field(default_factory=dict)
+    tags: List[str] = Field(default_factory=list)
+    contact_id: Optional[str] = Field(default=None, alias="contactId")
+    created_at: str = Field(..., alias="createdAt")
+    updated_at: str = Field(..., alias="updatedAt")
+
+    model_config = ConfigDict(populate_by_name=True)
+
+
+class ConversationPagination(BaseModel):
+    total: int
+    limit: int
+    offset: int
+    has_more: bool = Field(..., alias="hasMore")
+
+    model_config = ConfigDict(populate_by_name=True)
+
+
+class ConversationListResponse(BaseModel):
+    data: List[Conversation]
+    pagination: ConversationPagination
+
+
+class ConversationMessagesPagination(BaseModel):
+    total: int
+    limit: int
+    offset: int
+    has_more: bool = Field(..., alias="hasMore")
+
+    model_config = ConfigDict(populate_by_name=True)
+
+
+class ConversationMessages(BaseModel):
+    data: List[Message]
+    pagination: ConversationMessagesPagination
+
+
+class ConversationWithMessages(Conversation):
+    messages: Optional[ConversationMessages] = None
