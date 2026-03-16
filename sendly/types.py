@@ -162,6 +162,9 @@ class Message(BaseModel):
     metadata: Optional[Dict[str, Any]] = Field(
         default=None, description="Custom metadata attached to the message"
     )
+    ai_metadata: Optional[Dict[str, Any]] = Field(
+        default=None, alias="aiMetadata", description="AI classification metadata for inbound messages"
+    )
 
     model_config = ConfigDict(populate_by_name=True)
 
