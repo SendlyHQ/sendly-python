@@ -58,10 +58,22 @@ from .types import (
     Conversation,
     ConversationListResponse,
     ConversationWithMessages,
+    # Draft types
+    CreateDraftRequest,
+    DraftListResponse,
+    DraftPagination,
+    DraftStatus,
+    MessageDraft,
+    UpdateDraftRequest,
     SANDBOX_TEST_NUMBERS,
     SUPPORTED_COUNTRIES,
     # Account types
     Account,
+    # Label types
+    AddLabelsRequest,
+    CreateLabelRequest,
+    Label,
+    LabelListResponse,
     # Enterprise types
     AnalyticsOverview,
     ApiKey,
@@ -188,6 +200,13 @@ __all__ = [
     "Conversation",
     "ConversationListResponse",
     "ConversationWithMessages",
+    # Draft types
+    "CreateDraftRequest",
+    "DraftListResponse",
+    "DraftPagination",
+    "DraftStatus",
+    "MessageDraft",
+    "UpdateDraftRequest",
     # Enterprise types
     "AnalyticsOverview",
     "AutoTopUpSettings",
@@ -223,6 +242,11 @@ __all__ = [
     "WorkspaceBillingItem",
     "WorkspaceCredits",
     "WorkspaceWebhook",
+    # Label types
+    "AddLabelsRequest",
+    "CreateLabelRequest",
+    "Label",
+    "LabelListResponse",
     # Media resources
     "MediaResource",
     "AsyncMediaResource",

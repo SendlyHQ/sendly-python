@@ -1466,3 +1466,88 @@ class ConversationMessages(BaseModel):
 
 class ConversationWithMessages(Conversation):
     messages: Optional[ConversationMessages] = None
+
+
+# ============================================================================
+# Labels
+# ============================================================================
+
+
+class Label(BaseModel):
+    id: str
+    name: str
+    color: str
+    description: Optional[str] = None
+    created_at: str = Field(..., alias="createdAt")
+
+    model_config = ConfigDict(populate_by_name=True)
+
+
+class LabelListResponse(BaseModel):
+    data: List[Label]
+
+
+class CreateLabelRequest(BaseModel):
+    name: str
+    color: Optional[str] = None
+    description: Optional[str] = None
+
+
+class AddLabelsRequest(BaseModel):
+    label_ids: List[str] = Field(..., alias="labelIds")
+
+    model_config = ConfigDict(populate_by_name=True)
+
+
+# ============================================================================
+# Drafts
+# ============================================================================
+
+
+DraftStatus = Literal["pending", "approved", "rejected", "sent", "failed"]
+
+
+class MessageDraft(BaseModel):
+    id: str
+    conversation_id: str = Field(..., alias="conversationId")
+    text: str
+    media_urls: Optional[List[str]] = Field(default=None, alias="mediaUrls")
+    metadata: Optional[Dict[str, Any]] = None
+    status: DraftStatus
+    source: Optional[str] = None
+    created_by: Optional[str] = Field(default=None, alias="createdBy")
+    reviewed_by: Optional[str] = Field(default=None, alias="reviewedBy")
+    reviewed_at: Optional[str] = Field(default=None, alias="reviewedAt")
+    rejection_reason: Optional[str] = Field(default=None, alias="rejectionReason")
+    message_id: Optional[str] = Field(default=None, alias="messageId")
+    created_at: str = Field(..., alias="createdAt")
+    updated_at: str = Field(..., alias="updatedAt")
+
+    model_config = ConfigDict(populate_by_name=True)
+
+
+class DraftPagination(BaseModel):
+    total: int
+
+
+class DraftListResponse(BaseModel):
+    data: List[MessageDraft]
+    pagination: DraftPagination
+
+
+class CreateDraftRequest(BaseModel):
+    conversation_id: str = Field(..., alias="conversationId")
+    text: str
+    media_urls: Optional[List[str]] = Field(default=None, alias="mediaUrls")
+    metadata: Optional[Dict[str, Any]] = None
+    source: Optional[str] = None
+
+    model_config = ConfigDict(populate_by_name=True)
+
+
+class UpdateDraftRequest(BaseModel):
+    text: Optional[str] = None
+    media_urls: Optional[List[str]] = Field(default=None, alias="mediaUrls")
+    metadata: Optional[Dict[str, Any]] = None
+
+    model_config = ConfigDict(populate_by_name=True)
