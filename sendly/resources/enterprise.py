@@ -496,6 +496,35 @@ class EnterpriseResource:
         response = self._http.request("POST", "/enterprise/workspaces/provision", body=body)
         return response
 
+    def generate_business_page(
+        self,
+        business_name: str,
+        use_case: Optional[str] = None,
+        use_case_summary: Optional[str] = None,
+        contact_email: Optional[str] = None,
+        contact_phone: Optional[str] = None,
+        business_address: Optional[str] = None,
+        social_url: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        body: Dict[str, Any] = {"businessName": business_name}
+        if use_case is not None:
+            body["useCase"] = use_case
+        if use_case_summary is not None:
+            body["useCaseSummary"] = use_case_summary
+        if contact_email is not None:
+            body["contactEmail"] = contact_email
+        if contact_phone is not None:
+            body["contactPhone"] = contact_phone
+        if business_address is not None:
+            body["businessAddress"] = business_address
+        if social_url is not None:
+            body["socialUrl"] = social_url
+
+        response = self._http.request(
+            "POST", "/verification/business-page/generate", body=body
+        )
+        return response
+
 
 class AsyncWorkspacesSubResource:
     def __init__(self, http: AsyncHttpClient):
@@ -965,4 +994,33 @@ class AsyncEnterpriseResource:
             body["generateOptInPage"] = opts["generateOptInPage"]
 
         response = await self._http.request("POST", "/enterprise/workspaces/provision", body=body)
+        return response
+
+    async def generate_business_page(
+        self,
+        business_name: str,
+        use_case: Optional[str] = None,
+        use_case_summary: Optional[str] = None,
+        contact_email: Optional[str] = None,
+        contact_phone: Optional[str] = None,
+        business_address: Optional[str] = None,
+        social_url: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        body: Dict[str, Any] = {"businessName": business_name}
+        if use_case is not None:
+            body["useCase"] = use_case
+        if use_case_summary is not None:
+            body["useCaseSummary"] = use_case_summary
+        if contact_email is not None:
+            body["contactEmail"] = contact_email
+        if contact_phone is not None:
+            body["contactPhone"] = contact_phone
+        if business_address is not None:
+            body["businessAddress"] = business_address
+        if social_url is not None:
+            body["socialUrl"] = social_url
+
+        response = await self._http.request(
+            "POST", "/verification/business-page/generate", body=body
+        )
         return response
