@@ -521,7 +521,7 @@ class EnterpriseResource:
             body["socialUrl"] = social_url
 
         response = self._http.request(
-            "POST", "/verification/business-page/generate", body=body
+            "POST", "/enterprise/business-page/generate", body=body
         )
         return response
 
@@ -1021,6 +1021,6 @@ class AsyncEnterpriseResource:
             body["socialUrl"] = social_url
 
         response = await self._http.request(
-            "POST", "/verification/business-page/generate", body=body
+            "POST", "/enterprise/business-page/generate", body=body
         )
         return response
