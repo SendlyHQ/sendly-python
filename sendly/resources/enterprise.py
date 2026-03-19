@@ -492,6 +492,8 @@ class EnterpriseResource:
             body["webhookUrl"] = opts["webhookUrl"]
         if opts.get("generateOptInPage") is not None:
             body["generateOptInPage"] = opts["generateOptInPage"]
+        if opts.get("generateBusinessPage") is not None:
+            body["generateBusinessPage"] = opts["generateBusinessPage"]
 
         response = self._http.request("POST", "/enterprise/workspaces/provision", body=body)
         return response
@@ -992,6 +994,8 @@ class AsyncEnterpriseResource:
             body["webhookUrl"] = opts["webhookUrl"]
         if opts.get("generateOptInPage") is not None:
             body["generateOptInPage"] = opts["generateOptInPage"]
+        if opts.get("generateBusinessPage") is not None:
+            body["generateBusinessPage"] = opts["generateBusinessPage"]
 
         response = await self._http.request("POST", "/enterprise/workspaces/provision", body=body)
         return response
