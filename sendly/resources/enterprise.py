@@ -527,6 +527,54 @@ class EnterpriseResource:
         )
         return response
 
+    def upload_verification_document(
+        self,
+        file_path: str,
+        workspace_id: Optional[str] = None,
+        verification_id: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        import os
+        import mimetypes
+
+        if not file_path or not os.path.exists(file_path):
+            raise ValueError("A valid file path is required")
+
+        filename = os.path.basename(file_path)
+        content_type = mimetypes.guess_type(file_path)[0] or "application/octet-stream"
+
+        with open(file_path, "rb") as f:
+            files = {"file": (filename, f, content_type)}
+            data: Dict[str, str] = {}
+            if workspace_id is not None:
+                data["workspaceId"] = workspace_id
+            if verification_id is not None:
+                data["verificationId"] = verification_id
+
+            headers = {
+                "Authorization": f"Bearer {self._http.api_key}",
+                "Accept": "application/json",
+            }
+            if self._http.organization_id:
+                headers["X-Organization-Id"] = self._http.organization_id
+
+            url = f"{self._http.base_url}/enterprise/verification-document/upload"
+            import httpx
+            with httpx.Client(timeout=self._http.timeout) as client:
+                response = client.post(url, files=files, data=data, headers=headers)
+
+            if not response.is_success:
+                from ..errors import SendlyError
+                resp_data = response.json() if "application/json" in response.headers.get("content-type", "") else {}
+                if isinstance(resp_data, dict):
+                    raise SendlyError.from_response(response.status_code, resp_data)
+                raise SendlyError(
+                    message=str(resp_data) or f"HTTP {response.status_code}",
+                    code="internal_error",
+                    status_code=response.status_code,
+                )
+
+            return response.json()
+
 
 class AsyncWorkspacesSubResource:
     def __init__(self, http: AsyncHttpClient):
@@ -1028,3 +1076,52 @@ class AsyncEnterpriseResource:
             "POST", "/enterprise/business-page/generate", body=body
         )
         return response
+
+    async def upload_verification_document(
+        self,
+        file_path: str,
+        workspace_id: Optional[str] = None,
+        verification_id: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        import os
+        import mimetypes
+
+        if not file_path or not os.path.exists(file_path):
+            raise ValueError("A valid file path is required")
+
+        filename = os.path.basename(file_path)
+        content_type = mimetypes.guess_type(file_path)[0] or "application/octet-stream"
+
+        with open(file_path, "rb") as f:
+            files = {"file": (filename, f.read(), content_type)}
+
+        data: Dict[str, str] = {}
+        if workspace_id is not None:
+            data["workspaceId"] = workspace_id
+        if verification_id is not None:
+            data["verificationId"] = verification_id
+
+        headers = {
+            "Authorization": f"Bearer {self._http.api_key}",
+            "Accept": "application/json",
+        }
+        if self._http.organization_id:
+            headers["X-Organization-Id"] = self._http.organization_id
+
+        url = f"{self._http.base_url}/enterprise/verification-document/upload"
+        import httpx
+        async with httpx.AsyncClient(timeout=self._http.timeout) as client:
+            response = await client.post(url, files=files, data=data, headers=headers)
+
+        if not response.is_success:
+            from ..errors import SendlyError
+            resp_data = response.json() if "application/json" in response.headers.get("content-type", "") else {}
+            if isinstance(resp_data, dict):
+                raise SendlyError.from_response(response.status_code, resp_data)
+            raise SendlyError(
+                message=str(resp_data) or f"HTTP {response.status_code}",
+                code="internal_error",
+                status_code=response.status_code,
+            )
+
+        return response.json()
