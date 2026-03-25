@@ -1551,3 +1551,67 @@ class UpdateDraftRequest(BaseModel):
     metadata: Optional[Dict[str, Any]] = None
 
     model_config = ConfigDict(populate_by_name=True)
+
+
+# ============================================================================
+# Conversation Context
+# ============================================================================
+
+
+class ConversationContextInfo(BaseModel):
+    id: str
+    phone_number: str = Field(..., alias="phoneNumber")
+    status: str
+    message_count: int = Field(..., alias="messageCount")
+    unread_count: int = Field(..., alias="unreadCount")
+
+    model_config = ConfigDict(populate_by_name=True)
+
+
+class ConversationContextBusiness(BaseModel):
+    name: str
+    use_case: Optional[str] = Field(default=None, alias="useCase")
+
+    model_config = ConfigDict(populate_by_name=True)
+
+
+class ConversationContext(BaseModel):
+    context: str
+    conversation: ConversationContextInfo
+    token_estimate: int = Field(..., alias="tokenEstimate")
+    business: Optional[ConversationContextBusiness] = None
+
+    model_config = ConfigDict(populate_by_name=True)
+
+
+# ============================================================================
+# Rules
+# ============================================================================
+
+
+class Rule(BaseModel):
+    id: str
+    name: str
+    conditions: Dict[str, Any]
+    actions: Dict[str, Any]
+    priority: Optional[int] = None
+    created_at: str = Field(..., alias="createdAt")
+    updated_at: str = Field(..., alias="updatedAt")
+
+    model_config = ConfigDict(populate_by_name=True)
+
+
+class RuleListResponse(BaseModel):
+    data: List[Rule]
+
+
+# ============================================================================
+# Generated Template
+# ============================================================================
+
+
+class GeneratedTemplate(BaseModel):
+    name: str
+    text: str
+    variables: List[str]
+    category: str

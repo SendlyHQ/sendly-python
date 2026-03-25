@@ -6,6 +6,7 @@ from pydantic import ValidationError as PydanticValidationError
 from ..errors import SendlyError
 from ..types import (
     Conversation,
+    ConversationContext,
     ConversationListResponse,
     ConversationWithMessages,
     Message,
@@ -203,6 +204,30 @@ class ConversationsResource:
                 status_code=200,
             ) from e
 
+    def get_context(
+        self,
+        id: str,
+        max_messages: Optional[int] = None,
+    ) -> ConversationContext:
+        params: Dict[str, Any] = {}
+        if max_messages is not None:
+            params["max_messages"] = max_messages
+
+        data = self._http.request(
+            method="GET",
+            path=f"/conversations/{quote(id, safe='')}/context",
+            params=params if params else None,
+        )
+
+        try:
+            return ConversationContext(**data)
+        except PydanticValidationError as e:
+            raise SendlyError(
+                message=f"Invalid API response format: {e}",
+                code="invalid_response",
+                status_code=200,
+            ) from e
+
 
 class AsyncConversationsResource:
     def __init__(self, http: AsyncHttpClient):
@@ -387,6 +412,30 @@ class AsyncConversationsResource:
 
         try:
             return Conversation(**data)
+        except PydanticValidationError as e:
+            raise SendlyError(
+                message=f"Invalid API response format: {e}",
+                code="invalid_response",
+                status_code=200,
+            ) from e
+
+    async def get_context(
+        self,
+        id: str,
+        max_messages: Optional[int] = None,
+    ) -> ConversationContext:
+        params: Dict[str, Any] = {}
+        if max_messages is not None:
+            params["max_messages"] = max_messages
+
+        data = await self._http.request(
+            method="GET",
+            path=f"/conversations/{quote(id, safe='')}/context",
+            params=params if params else None,
+        )
+
+        try:
+            return ConversationContext(**data)
         except PydanticValidationError as e:
             raise SendlyError(
                 message=f"Invalid API response format: {e}",

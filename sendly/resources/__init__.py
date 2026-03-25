@@ -8,6 +8,7 @@ from .enterprise import AsyncEnterpriseResource, EnterpriseResource
 from .labels import AsyncLabelsResource, LabelsResource
 from .media import AsyncMediaResource, MediaResource
 from .messages import AsyncMessagesResource, MessagesResource
+from .rules import AsyncRulesResource, RulesResource
 from .templates import AsyncTemplatesResource, TemplatesResource
 from .verify import AsyncVerifyResource, VerifyResource
 
@@ -32,4 +33,6 @@ __all__ = [
     "AsyncVerifyResource",
     "TemplatesResource",
     "AsyncTemplatesResource",
+    "RulesResource",
+    "AsyncRulesResource",
 ]

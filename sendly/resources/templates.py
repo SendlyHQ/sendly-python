@@ -4,7 +4,7 @@ Templates Resource - SMS Template Management
 
 from typing import Any, Dict, List, Optional
 
-from ..types import Template, TemplateListResponse, TemplatePreview
+from ..types import GeneratedTemplate, Template, TemplateListResponse, TemplatePreview
 from ..utils.http import AsyncHttpClient, HttpClient
 
 
@@ -88,6 +88,15 @@ class TemplatesResource:
         body = {"name": name} if name else {}
         data = self._http.request("POST", f"/templates/{template_id}/clone", json=body)
         return self._transform_template(data)
+
+    def generate(
+        self, description: str, category: Optional[str] = None
+    ) -> GeneratedTemplate:
+        body: Dict[str, Any] = {"description": description}
+        if category is not None:
+            body["category"] = category
+        data = self._http.request("POST", "/templates/generate", json=body)
+        return GeneratedTemplate(**data)
 
     def _transform_template(self, data: Dict[str, Any]) -> Template:
         return Template(
@@ -180,6 +189,15 @@ class AsyncTemplatesResource:
         body = {"name": name} if name else {}
         data = await self._http.request("POST", f"/templates/{template_id}/clone", json=body)
         return self._transform_template(data)
+
+    async def generate(
+        self, description: str, category: Optional[str] = None
+    ) -> GeneratedTemplate:
+        body: Dict[str, Any] = {"description": description}
+        if category is not None:
+            body["category"] = category
+        data = await self._http.request("POST", "/templates/generate", json=body)
+        return GeneratedTemplate(**data)
 
     def _transform_template(self, data: Dict[str, Any]) -> Template:
         return Template(

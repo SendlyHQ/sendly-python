@@ -15,6 +15,7 @@ from .resources.enterprise import AsyncEnterpriseResource, EnterpriseResource
 from .resources.labels import AsyncLabelsResource, LabelsResource
 from .resources.media import AsyncMediaResource, MediaResource
 from .resources.messages import AsyncMessagesResource, MessagesResource
+from .resources.rules import AsyncRulesResource, RulesResource
 from .resources.templates import AsyncTemplatesResource, TemplatesResource
 from .resources.verify import AsyncVerifyResource, VerifyResource
 from .resources.webhooks import AsyncWebhooksResource, WebhooksResource
@@ -115,6 +116,7 @@ class Sendly:
         self.enterprise = EnterpriseResource(self._http)
         self.labels = LabelsResource(self._http)
         self.drafts = DraftsResource(self._http)
+        self.rules = RulesResource(self._http)
 
     def __enter__(self) -> "Sendly":
         return self
@@ -251,6 +253,7 @@ class AsyncSendly:
         self.enterprise = AsyncEnterpriseResource(self._http)
         self.labels = AsyncLabelsResource(self._http)
         self.drafts = AsyncDraftsResource(self._http)
+        self.rules = AsyncRulesResource(self._http)
 
     async def __aenter__(self) -> "AsyncSendly":
         return self
