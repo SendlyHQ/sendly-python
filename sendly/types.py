@@ -369,10 +369,12 @@ class BatchMessageRequest(BaseModel):
 class BatchMessageResult(BaseModel):
     """Result for a single message in a batch"""
 
-    id: Optional[str] = Field(default=None, description="Message ID (if successful)")
+    id: str = Field(..., description="Message ID")
     to: str = Field(..., description="Destination phone number")
-    status: Literal["queued", "failed"] = Field(..., description="Status")
+    status: str = Field(..., description="Current message status")
     error: Optional[str] = Field(default=None, description="Error message (if failed)")
+    created_at: Optional[str] = Field(default=None, alias="createdAt", description="When the message was created")
+    delivered_at: Optional[str] = Field(default=None, alias="deliveredAt", description="When the message was delivered")
 
 
 class BatchMessageResponse(BaseModel):

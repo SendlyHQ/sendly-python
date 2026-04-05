@@ -126,6 +126,9 @@ class WebhookMessageData:
 
     metadata: Optional[dict] = None
 
+    batch_id: Optional[str] = None
+    """Batch ID if message was sent as part of a batch."""
+
     @property
     def message_id(self) -> str:
         """Backwards-compatible alias for id."""
@@ -298,6 +301,7 @@ class Webhooks:
                 created_at=obj.get("created_at"),
                 message_format=obj.get("message_format"),
                 media_urls=obj.get("media_urls"),
+                batch_id=obj.get("batch_id"),
             )
 
             return WebhookEvent(
