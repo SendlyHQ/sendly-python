@@ -369,7 +369,7 @@ class BatchMessageRequest(BaseModel):
 class BatchMessageResult(BaseModel):
     """Result for a single message in a batch"""
 
-    id: str = Field(..., description="Message ID")
+    id: Optional[str] = Field(default=None, description="Message ID (absent for failed messages)")
     to: str = Field(..., description="Destination phone number")
     status: str = Field(..., description="Current message status")
     error: Optional[str] = Field(default=None, description="Error message (if failed)")
