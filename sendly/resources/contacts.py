@@ -220,6 +220,43 @@ class ContactsResource:
         """Delete a contact"""
         self._http.request("DELETE", f"/contacts/{contact_id}")
 
+    def mark_valid(self, contact_id: str) -> Contact:
+        """Clear the invalid flag on a contact so future campaigns include it again.
+
+        Contacts get auto-flagged as invalid when a send fails with a terminal
+        bad-number error (landline, invalid number) or when a carrier lookup
+        reports they can't receive SMS. Use this when you disagree with the
+        auto-flag — e.g. the recipient ported from a landline to mobile.
+        """
+        data = self._http.request("POST", f"/contacts/{contact_id}/mark-valid")
+        return self._transform_contact(data)
+
+    def check_numbers(
+        self,
+        *,
+        list_id: Optional[str] = None,
+        force: bool = False,
+    ) -> Dict[str, Any]:
+        """Trigger a background carrier lookup across your contacts.
+
+        Landlines and other non-SMS-capable numbers are auto-excluded from
+        future campaigns. The lookup runs asynchronously (1–5 minutes).
+        Results populate the line_type, carrier_name, and invalid_reason
+        fields on affected contacts.
+
+        Idempotent: re-triggering while a lookup is already running for the
+        same scope is a no-op.
+
+        Args:
+            list_id: Scope to a single list (optional).
+            force: Re-check contacts even if previously looked up.
+        """
+        return self._http.request(
+            "POST",
+            "/contacts/lookup",
+            json={"listId": list_id, "force": force},
+        )
+
     def import_contacts(
         self,
         contacts: List[ImportContactItem],
@@ -255,15 +292,28 @@ class ContactsResource:
         if "lists" in data and data["lists"]:
             lists = [{"id": lst["id"], "name": lst["name"]} for lst in data["lists"]]
 
+        # Defensive: accept either snake_case or camelCase from the server.
+        def pick(snake: str, camel: str, default: Any = None) -> Any:
+            if snake in data and data[snake] is not None:
+                return data[snake]
+            if camel in data and data[camel] is not None:
+                return data[camel]
+            return default
+
         return Contact(
             id=data["id"],
-            phone_number=data["phone_number"],
+            phone_number=pick("phone_number", "phoneNumber"),
             name=data.get("name"),
             email=data.get("email"),
             metadata=data.get("metadata"),
-            opted_out=data.get("opted_out", False),
-            created_at=data["created_at"],
-            updated_at=data.get("updated_at"),
+            opted_out=pick("opted_out", "optedOut", False),
+            line_type=pick("line_type", "lineType"),
+            carrier_name=pick("carrier_name", "carrierName"),
+            line_type_checked_at=pick("line_type_checked_at", "lineTypeCheckedAt"),
+            invalid_reason=pick("invalid_reason", "invalidReason"),
+            invalidated_at=pick("invalidated_at", "invalidatedAt"),
+            created_at=pick("created_at", "createdAt"),
+            updated_at=pick("updated_at", "updatedAt"),
             lists=lists,
         )
 
@@ -446,6 +496,24 @@ class AsyncContactsResource:
         """Delete a contact"""
         await self._http.request("DELETE", f"/contacts/{contact_id}")
 
+    async def mark_valid(self, contact_id: str) -> Contact:
+        """Clear the invalid flag on a contact (async)."""
+        data = await self._http.request("POST", f"/contacts/{contact_id}/mark-valid")
+        return self._transform_contact(data)
+
+    async def check_numbers(
+        self,
+        *,
+        list_id: Optional[str] = None,
+        force: bool = False,
+    ) -> Dict[str, Any]:
+        """Trigger a background carrier lookup (async)."""
+        return await self._http.request(
+            "POST",
+            "/contacts/lookup",
+            json={"listId": list_id, "force": force},
+        )
+
     async def import_contacts(
         self,
         contacts: List[ImportContactItem],
@@ -481,14 +549,27 @@ class AsyncContactsResource:
         if "lists" in data and data["lists"]:
             lists = [{"id": lst["id"], "name": lst["name"]} for lst in data["lists"]]
 
+        # Defensive: accept either snake_case or camelCase from the server.
+        def pick(snake: str, camel: str, default: Any = None) -> Any:
+            if snake in data and data[snake] is not None:
+                return data[snake]
+            if camel in data and data[camel] is not None:
+                return data[camel]
+            return default
+
         return Contact(
             id=data["id"],
-            phone_number=data["phone_number"],
+            phone_number=pick("phone_number", "phoneNumber"),
             name=data.get("name"),
             email=data.get("email"),
             metadata=data.get("metadata"),
-            opted_out=data.get("opted_out", False),
-            created_at=data["created_at"],
-            updated_at=data.get("updated_at"),
+            opted_out=pick("opted_out", "optedOut", False),
+            line_type=pick("line_type", "lineType"),
+            carrier_name=pick("carrier_name", "carrierName"),
+            line_type_checked_at=pick("line_type_checked_at", "lineTypeCheckedAt"),
+            invalid_reason=pick("invalid_reason", "invalidReason"),
+            invalidated_at=pick("invalidated_at", "invalidatedAt"),
+            created_at=pick("created_at", "createdAt"),
+            updated_at=pick("updated_at", "updatedAt"),
             lists=lists,
         )

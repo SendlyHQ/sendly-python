@@ -1040,6 +1040,23 @@ class Contact(BaseModel):
     email: Optional[str] = Field(default=None, description="Contact email")
     metadata: Optional[Dict[str, Any]] = Field(default=None, description="Custom metadata")
     opted_out: bool = Field(default=False, description="Whether contact has opted out")
+    line_type: Optional[str] = Field(
+        default=None,
+        description="Carrier-reported line type (mobile, voip, toll free, fixed line, etc.). Populated after a carrier lookup.",
+    )
+    carrier_name: Optional[str] = Field(
+        default=None, description="Carrier name from the lookup (e.g., AT&T)"
+    )
+    line_type_checked_at: Optional[str] = Field(
+        default=None, description="When the carrier lookup last ran"
+    )
+    invalid_reason: Optional[str] = Field(
+        default=None,
+        description="Auto-exclusion reason: landline, invalid_number, or non_sms_capable. Clear with contacts.mark_valid().",
+    )
+    invalidated_at: Optional[str] = Field(
+        default=None, description="When the invalid flag was set"
+    )
     created_at: str = Field(..., description="Creation timestamp")
     updated_at: Optional[str] = Field(default=None, description="Last update timestamp")
     lists: Optional[List[Dict[str, str]]] = Field(
