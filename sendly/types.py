@@ -557,6 +557,23 @@ class WebhookEventType(str, Enum):
     MESSAGE_FAILED = "message.failed"
     MESSAGE_BOUNCED = "message.bounced"
     MESSAGE_RETRYING = "message.retrying"
+    MESSAGE_RECEIVED = "message.received"
+    MESSAGE_OPT_OUT = "message.opt_out"
+    MESSAGE_OPT_IN = "message.opt_in"
+    # List-health events — see /docs/how-to/clean-contact-list.
+    CONTACT_AUTO_FLAGGED = "contact.auto_flagged"
+    CONTACT_MARKED_VALID = "contact.marked_valid"
+    CONTACTS_LOOKUP_COMPLETED = "contacts.lookup_completed"
+    CONTACTS_BULK_MARKED_VALID = "contacts.bulk_marked_valid"
+
+
+class ListHealthEventSource(str, Enum):
+    """Source of a list-health event (frozen enum)."""
+
+    SEND_FAILURE = "send_failure"
+    CARRIER_LOOKUP = "carrier_lookup"
+    USER_ACTION = "user_action"
+    BULK_MARK_VALID = "bulk_mark_valid"
 
 
 class WebhookMode(str, Enum):
@@ -1057,10 +1074,22 @@ class Contact(BaseModel):
     invalidated_at: Optional[str] = Field(
         default=None, description="When the invalid flag was set"
     )
+    user_marked_valid_at: Optional[str] = Field(
+        default=None,
+        description="When a user manually cleared an auto-flag. Carrier re-checks respect this timestamp and leave the contact clean.",
+    )
     created_at: str = Field(..., description="Creation timestamp")
     updated_at: Optional[str] = Field(default=None, description="Last update timestamp")
     lists: Optional[List[Dict[str, str]]] = Field(
         default=None, description="Lists the contact belongs to"
+    )
+
+
+class BulkMarkValidResponse(BaseModel):
+    """Response from contacts.bulk_mark_valid()."""
+
+    cleared: int = Field(
+        ..., description="Number of contacts whose invalid flag was actually cleared"
     )
 
 

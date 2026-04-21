@@ -5,6 +5,7 @@ Contacts Resource - Contact & List Management
 from typing import Any, Dict, List, Optional
 
 from ..types import (
+    BulkMarkValidResponse,
     Contact,
     ContactList,
     ContactListResponse,
@@ -231,6 +232,29 @@ class ContactsResource:
         data = self._http.request("POST", f"/contacts/{contact_id}/mark-valid")
         return self._transform_contact(data)
 
+    def bulk_mark_valid(
+        self,
+        *,
+        ids: Optional[List[str]] = None,
+        list_id: Optional[str] = None,
+    ) -> BulkMarkValidResponse:
+        """Clear the invalid flag on many contacts at once.
+
+        Pass either an explicit id list (up to 10,000 per call) OR a list_id,
+        not both. Foreign ids silently no-op via the per-organization filter.
+
+        Args:
+            ids: Explicit contact ids to clear.
+            list_id: Clear every flagged member of this list.
+        """
+        if not ids and not list_id:
+            raise ValueError("bulk_mark_valid requires either 'ids' or 'list_id'")
+        if ids and list_id:
+            raise ValueError("bulk_mark_valid accepts 'ids' OR 'list_id', not both")
+        body: Dict[str, Any] = {"ids": ids} if ids else {"listId": list_id}
+        data = self._http.request("POST", "/contacts/bulk-mark-valid", json=body)
+        return BulkMarkValidResponse(cleared=data.get("cleared", 0))
+
     def check_numbers(
         self,
         *,
@@ -245,7 +269,8 @@ class ContactsResource:
         fields on affected contacts.
 
         Idempotent: re-triggering while a lookup is already running for the
-        same scope is a no-op.
+        same scope is a no-op. Response carries ``already_running`` / ``alreadyRunning``
+        when the call was collapsed against an in-flight lookup.
 
         Args:
             list_id: Scope to a single list (optional).
@@ -312,6 +337,7 @@ class ContactsResource:
             line_type_checked_at=pick("line_type_checked_at", "lineTypeCheckedAt"),
             invalid_reason=pick("invalid_reason", "invalidReason"),
             invalidated_at=pick("invalidated_at", "invalidatedAt"),
+            user_marked_valid_at=pick("user_marked_valid_at", "userMarkedValidAt"),
             created_at=pick("created_at", "createdAt"),
             updated_at=pick("updated_at", "updatedAt"),
             lists=lists,
@@ -501,13 +527,38 @@ class AsyncContactsResource:
         data = await self._http.request("POST", f"/contacts/{contact_id}/mark-valid")
         return self._transform_contact(data)
 
+    async def bulk_mark_valid(
+        self,
+        *,
+        ids: Optional[List[str]] = None,
+        list_id: Optional[str] = None,
+    ) -> BulkMarkValidResponse:
+        """Clear the invalid flag on many contacts at once (async).
+
+        Pass either an explicit id list (up to 10,000 per call) OR a list_id,
+        not both. Foreign ids silently no-op via the per-organization filter.
+        """
+        if not ids and not list_id:
+            raise ValueError("bulk_mark_valid requires either 'ids' or 'list_id'")
+        if ids and list_id:
+            raise ValueError("bulk_mark_valid accepts 'ids' OR 'list_id', not both")
+        body: Dict[str, Any] = {"ids": ids} if ids else {"listId": list_id}
+        data = await self._http.request(
+            "POST", "/contacts/bulk-mark-valid", json=body
+        )
+        return BulkMarkValidResponse(cleared=data.get("cleared", 0))
+
     async def check_numbers(
         self,
         *,
         list_id: Optional[str] = None,
         force: bool = False,
     ) -> Dict[str, Any]:
-        """Trigger a background carrier lookup (async)."""
+        """Trigger a background carrier lookup (async).
+
+        Idempotent: re-triggers during an in-flight lookup collapse to a
+        ``{"alreadyRunning": true}`` response.
+        """
         return await self._http.request(
             "POST",
             "/contacts/lookup",
@@ -569,6 +620,7 @@ class AsyncContactsResource:
             line_type_checked_at=pick("line_type_checked_at", "lineTypeCheckedAt"),
             invalid_reason=pick("invalid_reason", "invalidReason"),
             invalidated_at=pick("invalidated_at", "invalidatedAt"),
+            user_marked_valid_at=pick("user_marked_valid_at", "userMarkedValidAt"),
             created_at=pick("created_at", "createdAt"),
             updated_at=pick("updated_at", "updatedAt"),
             lists=lists,

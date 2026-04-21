@@ -29,7 +29,7 @@ Async Example:
     >>> asyncio.run(main())
 """
 
-__version__ = "3.27.1"
+__version__ = "3.29.0"
 
 # Main clients
 from .client import AsyncSendly, Sendly

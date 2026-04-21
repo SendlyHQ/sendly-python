@@ -1,5 +1,23 @@
 # sendly (Python)
 
+## 3.29.0
+
+### Minor Changes
+
+- `contacts.bulk_mark_valid(ids=..., list_id=...)` / async equivalent: clear the invalid flag on many contacts at once (up to 10,000 per call).
+- `WebhookEventType` enum gains four list-health values: `CONTACT_AUTO_FLAGGED`, `CONTACT_MARKED_VALID`, `CONTACTS_LOOKUP_COMPLETED`, `CONTACTS_BULK_MARKED_VALID`. Also adds the missing `MESSAGE_RECEIVED`, `MESSAGE_OPT_OUT`, `MESSAGE_OPT_IN`.
+- New `ListHealthEventSource` enum (frozen): `SEND_FAILURE | CARRIER_LOOKUP | USER_ACTION | BULK_MARK_VALID`.
+- `Contact` gains `user_marked_valid_at` — when a user manually cleared an auto-flag. Respected by future carrier re-checks.
+- `check_numbers()` response carries `already_running` / `alreadyRunning` when a rapid re-trigger was collapsed against an in-flight lookup.
+
+## 3.28.0
+
+### Minor Changes
+
+- `contacts.mark_valid(contact_id)` / async equivalent: clear the auto-exclusion flag on a contact.
+- `contacts.check_numbers(list_id=None, force=False)` / async equivalent: trigger a background carrier lookup.
+- `Contact` model gains `line_type`, `carrier_name`, `line_type_checked_at`, `invalid_reason`, `invalidated_at`.
+
 ## 3.18.1
 
 ### Patch Changes
