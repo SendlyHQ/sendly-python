@@ -259,6 +259,111 @@ class WebhooksResource:
 
         return self._http.request("POST", f"/webhooks/{webhook_id}/reset-circuit")
 
+    def redeliver(
+        self,
+        webhook_id: str,
+        *,
+        since: Optional[str] = None,
+        until: Optional[str] = None,
+        event_types: Optional[List[str]] = None,
+        statuses: Optional[List[str]] = None,
+        limit: Optional[int] = None,
+    ) -> dict:
+        """
+        Replay failed or cancelled webhook deliveries from the audit log.
+
+        Use after a customer endpoint has recovered from an outage to re-fire
+        deliveries that we recorded but couldn't deliver. Each replay creates
+        a new delivery row preserving the original ``event_id`` so customers
+        can dedupe.
+
+        Rejects with HTTP 409 if the circuit is currently open — call
+        :meth:`reset_circuit` first.
+
+        Args:
+            webhook_id: Webhook ID
+            since: Earliest delivery created_at, ISO-8601 (default: now − 24h)
+            until: Latest delivery created_at, ISO-8601 (default: now)
+            event_types: Filter by event type (default: all)
+            statuses: Replay deliveries in any of these statuses
+                (default: ``["failed", "cancelled"]``)
+            limit: Maximum number of deliveries to requeue
+                (default 1000, max 10000)
+
+        Returns:
+            Counts of requeued deliveries plus the new delivery IDs
+        """
+        if not webhook_id or not webhook_id.startswith("whk_"):
+            raise ValueError("Invalid webhook ID format")
+
+        body: dict = {}
+        if since is not None:
+            body["since"] = since
+        if until is not None:
+            body["until"] = until
+        if event_types is not None:
+            body["event_types"] = event_types
+        if statuses is not None:
+            body["statuses"] = statuses
+        if limit is not None:
+            body["limit"] = limit
+
+        return self._http.request(
+            "POST", f"/webhooks/{webhook_id}/redeliver", body=body or None
+        )
+
+    def backfill(
+        self,
+        webhook_id: str,
+        *,
+        since: Optional[str] = None,
+        until: Optional[str] = None,
+        event_types: Optional[List[str]] = None,
+        limit: Optional[int] = None,
+    ) -> dict:
+        """
+        Backfill missed webhook events from the underlying message log.
+
+        Use this when a circuit-breaker outage left events with no audit row
+        (the case :meth:`redeliver` cannot recover). The endpoint scans the
+        ``messages`` table for the window and synthesizes a webhook delivery
+        for any message whose ``message.sent`` / ``message.delivered`` /
+        ``message.failed`` event has not been successfully delivered yet.
+
+        Synthesized events have fresh IDs — your endpoint should dedupe by
+        ``event.data.object.id`` (the message ID).
+
+        Rejects with HTTP 409 if the circuit is currently open — call
+        :meth:`reset_circuit` first.
+
+        Args:
+            webhook_id: Webhook ID
+            since: Earliest message created_at, ISO-8601 (default: now − 24h)
+            until: Latest message created_at, ISO-8601 (default: now)
+            event_types: Filter by event type
+                (default: subscribed message events)
+            limit: Maximum events to synthesize (default 1000, max 10000)
+
+        Returns:
+            Counts grouped by event type plus the new delivery IDs
+        """
+        if not webhook_id or not webhook_id.startswith("whk_"):
+            raise ValueError("Invalid webhook ID format")
+
+        body: dict = {}
+        if since is not None:
+            body["since"] = since
+        if until is not None:
+            body["until"] = until
+        if event_types is not None:
+            body["event_types"] = event_types
+        if limit is not None:
+            body["limit"] = limit
+
+        return self._http.request(
+            "POST", f"/webhooks/{webhook_id}/backfill", body=body or None
+        )
+
     def rotate_secret(self, webhook_id: str) -> WebhookSecretRotation:
         """
         Rotate the webhook signing secret.
@@ -426,6 +531,69 @@ class AsyncWebhooksResource:
             raise ValueError("Invalid webhook ID format")
 
         return await self._http.request("POST", f"/webhooks/{webhook_id}/reset-circuit")
+
+    async def redeliver(
+        self,
+        webhook_id: str,
+        *,
+        since: Optional[str] = None,
+        until: Optional[str] = None,
+        event_types: Optional[List[str]] = None,
+        statuses: Optional[List[str]] = None,
+        limit: Optional[int] = None,
+    ) -> dict:
+        """Replay failed/cancelled webhook deliveries from the audit log.
+
+        See :meth:`WebhooksResource.redeliver` for details.
+        """
+        if not webhook_id or not webhook_id.startswith("whk_"):
+            raise ValueError("Invalid webhook ID format")
+
+        body: dict = {}
+        if since is not None:
+            body["since"] = since
+        if until is not None:
+            body["until"] = until
+        if event_types is not None:
+            body["event_types"] = event_types
+        if statuses is not None:
+            body["statuses"] = statuses
+        if limit is not None:
+            body["limit"] = limit
+
+        return await self._http.request(
+            "POST", f"/webhooks/{webhook_id}/redeliver", body=body or None
+        )
+
+    async def backfill(
+        self,
+        webhook_id: str,
+        *,
+        since: Optional[str] = None,
+        until: Optional[str] = None,
+        event_types: Optional[List[str]] = None,
+        limit: Optional[int] = None,
+    ) -> dict:
+        """Backfill missed webhook events from the underlying message log.
+
+        See :meth:`WebhooksResource.backfill` for details.
+        """
+        if not webhook_id or not webhook_id.startswith("whk_"):
+            raise ValueError("Invalid webhook ID format")
+
+        body: dict = {}
+        if since is not None:
+            body["since"] = since
+        if until is not None:
+            body["until"] = until
+        if event_types is not None:
+            body["event_types"] = event_types
+        if limit is not None:
+            body["limit"] = limit
+
+        return await self._http.request(
+            "POST", f"/webhooks/{webhook_id}/backfill", body=body or None
+        )
 
     async def rotate_secret(self, webhook_id: str) -> WebhookSecretRotation:
         """Rotate the webhook signing secret."""
