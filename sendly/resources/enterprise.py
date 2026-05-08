@@ -57,20 +57,55 @@ class WorkspacesSubResource:
     def delete(self, workspace_id: str) -> None:
         self._http.request("DELETE", f"/enterprise/workspaces/{quote(workspace_id, safe='')}")
 
-    def submit_verification(self, workspace_id: str, data: Dict[str, Any]) -> Dict[str, Any]:
-        body: Dict[str, Any] = {
-            "business_name": data.get("business_name"),
-            "business_type": data.get("business_type"),
-            "ein": data.get("ein"),
-            "address": data.get("address"),
-            "city": data.get("city"),
-            "state": data.get("state"),
-            "zip": data.get("zip"),
-            "use_case": data.get("use_case"),
-            "sample_messages": data.get("sample_messages"),
-        }
-        if data.get("monthly_volume") is not None:
-            body["monthly_volume"] = data["monthly_volume"]
+    def submit_verification(
+        self,
+        workspace_id: str,
+        data: Optional[Dict[str, Any]] = None,
+        **kwargs: Any,
+    ) -> Dict[str, Any]:
+        """
+        Submit (or resubmit) a verification for an enterprise workspace.
+
+        Partial-update friendly (May 2026): for resubmit on an existing
+        workspace, you only need to send the fields you want to change —
+        everything else is preserved from the existing record. So if you
+        rejected with a missing-field error, just resend with the missing
+        bits and you're done.
+
+        Accepts either a `data` dict or kwargs:
+
+            client.enterprise.workspaces.submit_verification(
+                workspace_id,
+                businessName="Acme LLC",
+                website="https://acme.com",
+                address={"street": "...", "city": "...", "state": "California",
+                         "zip": "90001", "country": "US"},
+                contact={"firstName": "...", "lastName": "...",
+                         "email": "...", "phone": "+15551234567"},
+                useCase="Insurance Services",
+                useCaseSummary="...",
+                sampleMessages="...",
+                optInWorkflow="...",
+                entityType="SOLE_PROPRIETOR",  # leave brn fields null for sole props
+            )
+
+        For partial-update resubmits, send only what changed:
+
+            client.enterprise.workspaces.submit_verification(
+                workspace_id, contact={"email": "new@email.com"}
+            )
+
+        All other fields (businessName, website, address, etc.) carry over
+        from the existing verification record. Hosted page URLs (/biz/,
+        /opt-in/, /legal/) generated during provision are auto-preserved —
+        you do not need to re-fetch them.
+        """
+        body: Dict[str, Any] = {}
+        if data:
+            body.update(data)
+        body.update(kwargs)
+        # Strip None values so server-side merge picks up existing values
+        body = {k: v for k, v in body.items() if v is not None}
 
         response = self._http.request(
             "POST",
@@ -78,6 +113,22 @@ class WorkspacesSubResource:
             body=body,
         )
         return response
+
+    def resubmit_verification(
+        self,
+        workspace_id: str,
+        **partial_updates: Any,
+    ) -> Dict[str, Any]:
+        """
+        Convenience alias for resubmits. Identical to submit_verification
+        but reads as a more obvious name when you only want to update a
+        few fields after a rejection.
+
+            client.enterprise.workspaces.resubmit_verification(
+                workspace_id, contact={"email": "new@email.com"}
+            )
+        """
+        return self.submit_verification(workspace_id, **partial_updates)
 
     def inherit_verification(self, workspace_id: str, source_workspace_id: str) -> Dict[str, Any]:
         response = self._http.request(

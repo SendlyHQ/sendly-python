@@ -1,5 +1,20 @@
 # sendly (Python)
 
+## 3.30.0
+
+### Minor Changes
+
+- `enterprise.workspaces.submit_verification(workspace_id, **fields)`: rewritten to match the actual API shape (camelCase top-level, nested `address`/`contact` objects, `entityType` + `brn`/`brnType`/`brnCountry` instead of `business_type`/`ein`). The previous shape didn't match the server endpoint.
+- **Partial-update friendly:** for resubmits on existing workspaces, send only the fields you want to change — everything else is filled from the existing record. Hosted page URLs (`/biz/`, `/opt-in/`, `/legal/`) generated during provision are auto-preserved.
+- `enterprise.workspaces.resubmit_verification(workspace_id, **partial_updates)`: convenience alias for resubmits — same as `submit_verification` but reads more naturally for one-field-change use cases.
+- Accepts either a `data` dict or kwargs for ergonomic use.
+
+### Server-side fixes paired with this release
+
+- `/api/v1/enterprise/workspaces/:id/verification/submit` now returns specific missing-field errors (e.g. `"Missing required fields: website"`) instead of listing every required field.
+- Endpoint accepts both flat and `{"verification": {...}}` wrapped shapes (matches `/enterprise/provision`).
+- `useCase` validation expanded from 23 entries to the full 43-value Telnyx enum.
+
 ## 3.29.0
 
 ### Minor Changes
