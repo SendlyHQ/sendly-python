@@ -200,8 +200,8 @@ preview = client.messages.preview_batch(
         {'to': '+447700900123', 'text': 'Hello UK!'}
     ]
 )
-print(f'Total credits needed: {preview.total_credits}')
-print(f'Valid: {preview.valid}, Invalid: {preview.invalid}')
+print(f"Credits needed: {preview['creditsNeeded']}")
+print(f"Will send: {preview['willSend']}, Blocked: {preview['blocked']}")
 ```
 
 ### Rate Limit Information
@@ -312,22 +312,23 @@ client.webhooks.delete('whk_xxx')
 ```python
 from sendly import Webhooks
 
-webhooks = Webhooks('your_webhook_secret')
+WEBHOOK_SECRET = 'your_webhook_secret'
 
 # In your webhook handler (Flask example)
 @app.route('/webhooks/sendly', methods=['POST'])
 def handle_webhook():
     signature = request.headers.get('X-Sendly-Signature')
+    timestamp = request.headers.get('X-Sendly-Timestamp')
     payload = request.get_data(as_text=True)
 
     try:
-        event = webhooks.verify_and_parse(payload, signature)
-        
+        event = Webhooks.parse_event(payload, signature, WEBHOOK_SECRET, timestamp=timestamp)
+
         if event.type == 'message.delivered':
             print(f'Message {event.data.id} delivered')
         elif event.type == 'message.failed':
             print(f'Message {event.data.id} failed: {event.data.error_code}')
-        
+
         return 'OK', 200
     except Exception as e:
         print(f'Invalid signature: {e}')
@@ -348,27 +349,23 @@ print(f'Reserved (scheduled): {credits.reserved_balance} credits')
 print(f'Total: {credits.balance} credits')
 
 # View credit transaction history
-result = client.account.get_credit_transactions()
-for tx in result.data:
+transactions = client.account.get_credit_transactions()
+for tx in transactions:
     print(f'{tx.type}: {tx.amount} credits - {tx.description}')
 
 # List API keys
-result = client.account.list_api_keys()
-for key in result.data:
+keys = client.account.list_api_keys()
+for key in keys:
     print(f'{key.name}: {key.prefix}*** ({key.type})')
 
 # Get API key usage stats
 usage = client.account.get_api_key_usage('key_xxx')
-print(f'Messages sent: {usage.messages_sent}')
-print(f'Credits used: {usage.credits_used}')
+print(f"Messages sent: {usage['messagesSent']}")
+print(f"Credits used: {usage['creditsUsed']}")
 
 # Create a new API key
-new_key = client.account.create_api_key(
-    name='Production Key',
-    key_type='live',
-    scopes=['sms:send', 'sms:read']
-)
-print(f'New key: {new_key.key}')  # Only shown once!
+result = client.account.create_api_key('Production Key')
+print(f"New key: {result['key']}")  # Only shown once!
 
 # Revoke an API key
 client.account.revoke_api_key('key_xxx')
@@ -616,15 +613,17 @@ client.enterprise.workspaces.delete("ws_xxx")
 ### Credits & API Keys
 
 ```python
-client.enterprise.workspaces.transfer_credits("ws_dest", {
-    "source_workspace_id": "ws_source",
-    "amount": 5000
-})
+client.enterprise.workspaces.transfer_credits(
+    "ws_dest",
+    source_workspace_id="ws_source",
+    amount=5000,
+)
 
-key = client.enterprise.workspaces.create_key("ws_xxx", {
-    "name": "Production",
-    "type": "live"
-})
+key = client.enterprise.workspaces.create_key(
+    "ws_xxx",
+    name="Production",
+    type="live",
+)
 print(key.key)
 
 client.enterprise.workspaces.revoke_key("ws_xxx", "key_abc")
