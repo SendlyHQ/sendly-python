@@ -29,7 +29,7 @@ Async Example:
     >>> asyncio.run(main())
 """
 
-__version__ = "3.29.0"
+__version__ = "3.32.0"
 
 # Main clients
 from .client import AsyncSendly, Sendly
@@ -47,6 +47,10 @@ from .errors import (
 )
 
 # Resources
+from .resources.business_upgrade import (
+    AsyncBusinessUpgradeResource,
+    BusinessUpgradeResource,
+)
 from .resources.media import AsyncMediaResource, MediaResource
 
 # Types
@@ -250,6 +254,9 @@ __all__ = [
     # Media resources
     "MediaResource",
     "AsyncMediaResource",
+    # Business upgrade resources
+    "BusinessUpgradeResource",
+    "AsyncBusinessUpgradeResource",
     # Errors
     "SendlyError",
     "AuthenticationError",

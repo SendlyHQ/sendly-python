@@ -7,6 +7,10 @@ Main entry point for the Sendly SDK.
 from typing import Any, Optional, Union
 
 from .resources.account import AccountResource, AsyncAccountResource
+from .resources.business_upgrade import (
+    AsyncBusinessUpgradeResource,
+    BusinessUpgradeResource,
+)
 from .resources.campaigns import AsyncCampaignsResource, CampaignsResource
 from .resources.contacts import AsyncContactsResource, ContactsResource
 from .resources.conversations import AsyncConversationsResource, ConversationsResource
@@ -117,6 +121,7 @@ class Sendly:
         self.labels = LabelsResource(self._http)
         self.drafts = DraftsResource(self._http)
         self.rules = RulesResource(self._http)
+        self.business_upgrade = BusinessUpgradeResource(self._http)
 
     def __enter__(self) -> "Sendly":
         return self
@@ -254,6 +259,7 @@ class AsyncSendly:
         self.labels = AsyncLabelsResource(self._http)
         self.drafts = AsyncDraftsResource(self._http)
         self.rules = AsyncRulesResource(self._http)
+        self.business_upgrade = AsyncBusinessUpgradeResource(self._http)
 
     async def __aenter__(self) -> "AsyncSendly":
         return self

@@ -1,5 +1,21 @@
 # sendly (Python)
 
+## 3.32.0
+
+### Minor Changes
+
+- New `business_upgrade` resource on `Sendly` / `AsyncSendly` — manages the toll-free entity-upgrade ("fork-with-new-number") flow. When a customer forms a new legal entity (e.g. an LLC), reserve a new toll-free number under that entity, submit it for carrier review, and atomically swap to it on approval. Outbound SMS keeps flowing through the old number during the 1-2 week review window.
+- Seven methods, mirroring the Node SDK's `BusinessUpgradeResource`:
+  - `preflight(**fields)` — advisory validation, no writes; returns issues + proposed auto-fixes.
+  - `best_prefill()` — pull the most-recent non-empty messaging fields across the caller's verified workspaces.
+  - `start(workspace_id, *, ein_doc=None, **fields)` — provision a new TFN + messaging profile and submit to the carrier. Multipart upload for the IRS confirmation letter.
+  - `status(workspace_id)` — `{"pending": ...}` or `{"pending": None}`.
+  - `cancel(workspace_id)` — idempotent release of the reserved number + stored EIN doc.
+  - `resubmit(workspace_id, *, ein_doc=None, **fields)` — partial update for rejected / waiting-for-customer pendings.
+  - `set_disposition(workspace_id, *, disposition, target_workspace_id=None)` — `"moved"` or `"released"` after approval.
+- `ein_doc` accepts `bytes`, `(filename, bytes)`, `(filename, bytes, content_type)`, or a `{"buffer": bytes, "filename": str, "content_type": str}` dict — pick whichever feels natural for your call site.
+- Field names use Python snake_case (`business_name`, `brn_type`, `entity_type`, ...); the SDK translates to the API's camelCase shape before sending.
+
 ## 3.31.0
 
 ### Patch Changes
