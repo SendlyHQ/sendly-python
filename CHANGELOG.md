@@ -1,5 +1,12 @@
 # sendly (Python)
 
+## 3.33.0
+
+### Patch Changes
+
+- **Fixed a runtime `TypeError` on every write method across `contacts`, `campaigns`, `templates`, and `webhooks`.** Those resources called the internal HTTP client with a `json=` keyword, but `HttpClient.request()` / `AsyncHttpClient.request()` only accept `body=`. Every affected call site now passes `body=`, so creates/updates (e.g. `contacts.import_contacts`, `contacts.lookup`, `contacts.bulk_mark_valid`, `campaigns.create`, `templates.create`, `webhooks.create`) send their payloads correctly instead of raising.
+- Reconciled the version to a single source of truth at `3.33.0`: `pyproject.toml`, `sendly.__version__`, and the `User-Agent` header (`SDK_VERSION` in `utils/http.py`, previously `1.0.5`) now all report `sendly-python/3.33.0`.
+
 ## 3.32.0
 
 ### Minor Changes

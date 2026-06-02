@@ -54,7 +54,7 @@ class CampaignsResource:
         if template_id:
             body["templateId"] = template_id
 
-        data = self._http.request("POST", "/campaigns", json=body)
+        data = self._http.request("POST", "/campaigns", body=body)
         return self._transform_campaign(data)
 
     def list(
@@ -114,7 +114,7 @@ class CampaignsResource:
         if contact_list_ids is not None:
             body["contactListIds"] = contact_list_ids
 
-        data = self._http.request("PATCH", f"/campaigns/{campaign_id}", json=body)
+        data = self._http.request("PATCH", f"/campaigns/{campaign_id}", body=body)
         return self._transform_campaign(data)
 
     def delete(self, campaign_id: str) -> None:
@@ -159,7 +159,7 @@ class CampaignsResource:
         if timezone:
             body["timezone"] = timezone
 
-        data = self._http.request("POST", f"/campaigns/{campaign_id}/schedule", json=body)
+        data = self._http.request("POST", f"/campaigns/{campaign_id}/schedule", body=body)
         return self._transform_campaign(data)
 
     def cancel(self, campaign_id: str) -> Campaign:
@@ -217,7 +217,7 @@ class AsyncCampaignsResource:
         if template_id:
             body["templateId"] = template_id
 
-        data = await self._http.request("POST", "/campaigns", json=body)
+        data = await self._http.request("POST", "/campaigns", body=body)
         return self._transform_campaign(data)
 
     async def list(
@@ -268,7 +268,7 @@ class AsyncCampaignsResource:
         if contact_list_ids is not None:
             body["contactListIds"] = contact_list_ids
 
-        data = await self._http.request("PATCH", f"/campaigns/{campaign_id}", json=body)
+        data = await self._http.request("PATCH", f"/campaigns/{campaign_id}", body=body)
         return self._transform_campaign(data)
 
     async def delete(self, campaign_id: str) -> None:
@@ -304,7 +304,7 @@ class AsyncCampaignsResource:
         if timezone:
             body["timezone"] = timezone
 
-        data = await self._http.request("POST", f"/campaigns/{campaign_id}/schedule", json=body)
+        data = await self._http.request("POST", f"/campaigns/{campaign_id}/schedule", body=body)
         return self._transform_campaign(data)
 
     async def cancel(self, campaign_id: str) -> Campaign:

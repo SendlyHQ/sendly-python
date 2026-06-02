@@ -35,7 +35,7 @@ class TemplatesResource:
 
     def create(self, name: str, text: str) -> Template:
         """Create a new template"""
-        data = self._http.request("POST", "/templates", json={"name": name, "text": text})
+        data = self._http.request("POST", "/templates", body={"name": name, "text": text})
         return self._transform_template(data)
 
     def update(
@@ -52,7 +52,7 @@ class TemplatesResource:
         if text:
             body["text"] = text
 
-        data = self._http.request("PATCH", f"/templates/{template_id}", json=body)
+        data = self._http.request("PATCH", f"/templates/{template_id}", body=body)
         return self._transform_template(data)
 
     def publish(self, template_id: str) -> Template:
@@ -65,7 +65,7 @@ class TemplatesResource:
     ) -> TemplatePreview:
         """Preview a template with sample values"""
         body = {"variables": variables} if variables else {}
-        data = self._http.request("POST", f"/templates/{template_id}/preview", json=body)
+        data = self._http.request("POST", f"/templates/{template_id}/preview", body=body)
         return TemplatePreview(
             id=data["id"],
             name=data["name"],
@@ -86,7 +86,7 @@ class TemplatesResource:
             name: Optional new name for the cloned template
         """
         body = {"name": name} if name else {}
-        data = self._http.request("POST", f"/templates/{template_id}/clone", json=body)
+        data = self._http.request("POST", f"/templates/{template_id}/clone", body=body)
         return self._transform_template(data)
 
     def generate(
@@ -95,7 +95,7 @@ class TemplatesResource:
         body: Dict[str, Any] = {"description": description}
         if category is not None:
             body["category"] = category
-        data = self._http.request("POST", "/templates/generate", json=body)
+        data = self._http.request("POST", "/templates/generate", body=body)
         return GeneratedTemplate(**data)
 
     def _transform_template(self, data: Dict[str, Any]) -> Template:
@@ -141,7 +141,7 @@ class AsyncTemplatesResource:
 
     async def create(self, name: str, text: str) -> Template:
         """Create a new template"""
-        data = await self._http.request("POST", "/templates", json={"name": name, "text": text})
+        data = await self._http.request("POST", "/templates", body={"name": name, "text": text})
         return self._transform_template(data)
 
     async def update(
@@ -158,7 +158,7 @@ class AsyncTemplatesResource:
         if text:
             body["text"] = text
 
-        data = await self._http.request("PATCH", f"/templates/{template_id}", json=body)
+        data = await self._http.request("PATCH", f"/templates/{template_id}", body=body)
         return self._transform_template(data)
 
     async def publish(self, template_id: str) -> Template:
@@ -171,7 +171,7 @@ class AsyncTemplatesResource:
     ) -> TemplatePreview:
         """Preview a template with sample values"""
         body = {"variables": variables} if variables else {}
-        data = await self._http.request("POST", f"/templates/{template_id}/preview", json=body)
+        data = await self._http.request("POST", f"/templates/{template_id}/preview", body=body)
         return TemplatePreview(
             id=data["id"],
             name=data["name"],
@@ -187,7 +187,7 @@ class AsyncTemplatesResource:
     async def clone(self, template_id: str, name: Optional[str] = None) -> Template:
         """Clone a template"""
         body = {"name": name} if name else {}
-        data = await self._http.request("POST", f"/templates/{template_id}/clone", json=body)
+        data = await self._http.request("POST", f"/templates/{template_id}/clone", body=body)
         return self._transform_template(data)
 
     async def generate(
@@ -196,7 +196,7 @@ class AsyncTemplatesResource:
         body: Dict[str, Any] = {"description": description}
         if category is not None:
             body["category"] = category
-        data = await self._http.request("POST", "/templates/generate", json=body)
+        data = await self._http.request("POST", "/templates/generate", body=body)
         return GeneratedTemplate(**data)
 
     def _transform_template(self, data: Dict[str, Any]) -> Template:

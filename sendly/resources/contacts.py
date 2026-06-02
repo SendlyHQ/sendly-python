@@ -51,7 +51,7 @@ class ContactListsResource:
         if description:
             body["description"] = description
 
-        data = self._http.request("POST", "/contact-lists", json=body)
+        data = self._http.request("POST", "/contact-lists", body=body)
         return self._transform_list(data)
 
     def update(
@@ -68,7 +68,7 @@ class ContactListsResource:
         if description is not None:
             body["description"] = description
 
-        data = self._http.request("PATCH", f"/contact-lists/{list_id}", json=body)
+        data = self._http.request("PATCH", f"/contact-lists/{list_id}", body=body)
         return self._transform_list(data)
 
     def delete(self, list_id: str) -> None:
@@ -84,7 +84,7 @@ class ContactListsResource:
         data = self._http.request(
             "POST",
             f"/contact-lists/{list_id}/contacts",
-            json={"contact_ids": contact_ids},
+            body={"contact_ids": contact_ids},
         )
         return {"added_count": data["added_count"]}
 
@@ -194,7 +194,7 @@ class ContactsResource:
         if metadata:
             body["metadata"] = metadata
 
-        data = self._http.request("POST", "/contacts", json=body)
+        data = self._http.request("POST", "/contacts", body=body)
         return self._transform_contact(data)
 
     def update(
@@ -214,7 +214,7 @@ class ContactsResource:
         if metadata is not None:
             body["metadata"] = metadata
 
-        data = self._http.request("PATCH", f"/contacts/{contact_id}", json=body)
+        data = self._http.request("PATCH", f"/contacts/{contact_id}", body=body)
         return self._transform_contact(data)
 
     def delete(self, contact_id: str) -> None:
@@ -252,7 +252,7 @@ class ContactsResource:
         if ids and list_id:
             raise ValueError("bulk_mark_valid accepts 'ids' OR 'list_id', not both")
         body: Dict[str, Any] = {"ids": ids} if ids else {"listId": list_id}
-        data = self._http.request("POST", "/contacts/bulk-mark-valid", json=body)
+        data = self._http.request("POST", "/contacts/bulk-mark-valid", body=body)
         return BulkMarkValidResponse(cleared=data.get("cleared", 0))
 
     def check_numbers(
@@ -279,7 +279,7 @@ class ContactsResource:
         return self._http.request(
             "POST",
             "/contacts/lookup",
-            json={"listId": list_id, "force": force},
+            body={"listId": list_id, "force": force},
         )
 
     def import_contacts(
@@ -304,7 +304,7 @@ class ContactsResource:
         if opted_in_at:
             body["optedInAt"] = opted_in_at
 
-        data = self._http.request("POST", "/contacts/import", json=body)
+        data = self._http.request("POST", "/contacts/import", body=body)
         return ImportContactsResponse(
             imported=data["imported"],
             skipped_duplicates=data["skippedDuplicates"],
@@ -379,7 +379,7 @@ class AsyncContactListsResource:
         if description:
             body["description"] = description
 
-        data = await self._http.request("POST", "/contact-lists", json=body)
+        data = await self._http.request("POST", "/contact-lists", body=body)
         return self._transform_list(data)
 
     async def update(
@@ -396,7 +396,7 @@ class AsyncContactListsResource:
         if description is not None:
             body["description"] = description
 
-        data = await self._http.request("PATCH", f"/contact-lists/{list_id}", json=body)
+        data = await self._http.request("PATCH", f"/contact-lists/{list_id}", body=body)
         return self._transform_list(data)
 
     async def delete(self, list_id: str) -> None:
@@ -408,7 +408,7 @@ class AsyncContactListsResource:
         data = await self._http.request(
             "POST",
             f"/contact-lists/{list_id}/contacts",
-            json={"contact_ids": contact_ids},
+            body={"contact_ids": contact_ids},
         )
         return {"added_count": data["added_count"]}
 
@@ -495,7 +495,7 @@ class AsyncContactsResource:
         if metadata:
             body["metadata"] = metadata
 
-        data = await self._http.request("POST", "/contacts", json=body)
+        data = await self._http.request("POST", "/contacts", body=body)
         return self._transform_contact(data)
 
     async def update(
@@ -515,7 +515,7 @@ class AsyncContactsResource:
         if metadata is not None:
             body["metadata"] = metadata
 
-        data = await self._http.request("PATCH", f"/contacts/{contact_id}", json=body)
+        data = await self._http.request("PATCH", f"/contacts/{contact_id}", body=body)
         return self._transform_contact(data)
 
     async def delete(self, contact_id: str) -> None:
@@ -544,7 +544,7 @@ class AsyncContactsResource:
             raise ValueError("bulk_mark_valid accepts 'ids' OR 'list_id', not both")
         body: Dict[str, Any] = {"ids": ids} if ids else {"listId": list_id}
         data = await self._http.request(
-            "POST", "/contacts/bulk-mark-valid", json=body
+            "POST", "/contacts/bulk-mark-valid", body=body
         )
         return BulkMarkValidResponse(cleared=data.get("cleared", 0))
 
@@ -562,7 +562,7 @@ class AsyncContactsResource:
         return await self._http.request(
             "POST",
             "/contacts/lookup",
-            json={"listId": list_id, "force": force},
+            body={"listId": list_id, "force": force},
         )
 
     async def import_contacts(
@@ -587,7 +587,7 @@ class AsyncContactsResource:
         if opted_in_at:
             body["optedInAt"] = opted_in_at
 
-        data = await self._http.request("POST", "/contacts/import", json=body)
+        data = await self._http.request("POST", "/contacts/import", body=body)
         return ImportContactsResponse(
             imported=data["imported"],
             skipped_duplicates=data["skippedDuplicates"],

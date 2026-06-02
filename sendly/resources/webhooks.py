@@ -130,7 +130,7 @@ class WebhooksResource:
         if metadata:
             body["metadata"] = metadata
 
-        response = self._http.request("POST", "/webhooks", json=body)
+        response = self._http.request("POST", "/webhooks", body=body)
         return WebhookCreatedResponse(**_transform_webhook_response(response))
 
     def list(self) -> List[Webhook]:
@@ -207,7 +207,7 @@ class WebhooksResource:
         if metadata is not None:
             body["metadata"] = metadata
 
-        response = self._http.request("PATCH", f"/webhooks/{webhook_id}", json=body)
+        response = self._http.request("PATCH", f"/webhooks/{webhook_id}", body=body)
         return Webhook(**_transform_webhook_response(response))
 
     def delete(self, webhook_id: str) -> None:
@@ -460,7 +460,7 @@ class AsyncWebhooksResource:
         if metadata:
             body["metadata"] = metadata
 
-        response = await self._http.request("POST", "/webhooks", json=body)
+        response = await self._http.request("POST", "/webhooks", body=body)
         return WebhookCreatedResponse(**_transform_webhook_response(response))
 
     async def list(self) -> List[Webhook]:
@@ -507,7 +507,7 @@ class AsyncWebhooksResource:
         if metadata is not None:
             body["metadata"] = metadata
 
-        response = await self._http.request("PATCH", f"/webhooks/{webhook_id}", json=body)
+        response = await self._http.request("PATCH", f"/webhooks/{webhook_id}", body=body)
         return Webhook(**_transform_webhook_response(response))
 
     async def delete(self, webhook_id: str) -> None:
