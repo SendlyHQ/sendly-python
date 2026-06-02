@@ -1663,3 +1663,159 @@ class GeneratedTemplate(BaseModel):
     text: str
     variables: List[str]
     category: str
+
+
+# ============================================================================
+# Numbers
+# ============================================================================
+
+
+class NumberCountry(BaseModel):
+    """A country in which numbers can be searched and purchased"""
+
+    code: str = Field(..., description="ISO 3166-1 alpha-2 country code (e.g. GB)")
+    name: str = Field(..., description="Human-readable country name")
+    number_types: List[str] = Field(
+        ...,
+        alias="numberTypes",
+        description="Number types available in this country (e.g. mobile, local, toll_free)",
+    )
+
+    model_config = ConfigDict(populate_by_name=True)
+
+
+class NumberCountriesResponse(BaseModel):
+    """Response from listing the countries where numbers are available"""
+
+    countries: List[NumberCountry] = Field(..., description="Available countries")
+
+
+class AvailableNumber(BaseModel):
+    """A number available for purchase, already priced for the customer"""
+
+    phone_number: str = Field(..., alias="phoneNumber", description="Number in E.164 format")
+    country: str = Field(..., description="ISO 3166-1 alpha-2 country code")
+    number_type: str = Field(
+        ..., alias="numberType", description="Number type (e.g. mobile, local, toll_free)"
+    )
+    monthly_cost: str = Field(
+        ...,
+        alias="monthlyCost",
+        description="Monthly cost as a decimal string, already customer-priced",
+    )
+    currency: str = Field(..., description="ISO 4217 currency code for monthly_cost")
+
+    model_config = ConfigDict(populate_by_name=True)
+
+
+class AvailableNumbersResponse(BaseModel):
+    """Response from searching for available numbers"""
+
+    numbers: List[AvailableNumber] = Field(..., description="Available numbers")
+
+
+class OwnedNumber(BaseModel):
+    """A number owned by the account"""
+
+    id: str = Field(..., description="Unique number identifier")
+    phone_number: str = Field(..., alias="phoneNumber", description="Number in E.164 format")
+    status: str = Field(..., description="Provisioning/lifecycle status")
+    source: str = Field(..., description="How the number was acquired (e.g. purchased, ported)")
+    country_code: str = Field(
+        ..., alias="countryCode", description="ISO 3166-1 alpha-2 country code"
+    )
+    phone_number_type: str = Field(
+        ..., alias="phoneNumberType", description="Number type (e.g. mobile, local, toll_free)"
+    )
+    monthly_cost_cents: int = Field(
+        ..., alias="monthlyCostCents", description="Monthly cost in cents, already customer-priced"
+    )
+
+    model_config = ConfigDict(populate_by_name=True)
+
+
+class OwnedNumbersResponse(BaseModel):
+    """Response from listing owned numbers"""
+
+    numbers: List[OwnedNumber] = Field(..., description="Owned numbers")
+
+
+class BuyNumberRef(BaseModel):
+    """A lenient reference to the number on a buy response.
+
+    The buy success response only carries ``id``, ``phone_number`` and
+    ``status``; the richer fields on :class:`OwnedNumber` (``source``,
+    ``country_code``, ``phone_number_type``, ``monthly_cost_cents``) are absent,
+    so they are optional here to avoid a validation error on success.
+    """
+
+    id: str = Field(..., description="Unique number identifier")
+    phone_number: str = Field(..., alias="phoneNumber", description="Number in E.164 format")
+    status: str = Field(..., description="Provisioning/lifecycle status")
+    source: Optional[str] = Field(
+        default=None, description="How the number was acquired (e.g. purchased, ported)"
+    )
+    country_code: Optional[str] = Field(
+        default=None, alias="countryCode", description="ISO 3166-1 alpha-2 country code"
+    )
+    phone_number_type: Optional[str] = Field(
+        default=None, alias="phoneNumberType", description="Number type (e.g. mobile, local, toll_free)"
+    )
+    monthly_cost_cents: Optional[int] = Field(
+        default=None, alias="monthlyCostCents", description="Monthly cost in cents, already customer-priced"
+    )
+
+    model_config = ConfigDict(populate_by_name=True)
+
+
+class NumberAction(BaseModel):
+    """A hand-off action returned when a purchase needs documents or payment.
+
+    The caller hands the user ``url`` (a hosted Sendly page) along with
+    ``code`` (a short user code shown so the user proves terminal access).
+    Once the user completes the page, re-call :meth:`buy` with ``action_code``
+    set to ``action_code`` (the 32-hex action identifier), NOT ``code``.
+    """
+
+    url: str = Field(..., description="Hosted Sendly page the user must complete")
+    action_code: str = Field(
+        ...,
+        alias="actionCode",
+        description="32-hex action identifier; pass back to buy() as action_code and poll with it",
+    )
+    code: str = Field(
+        ...,
+        description="Short user code shown to the human to prove terminal access; display only",
+    )
+    expires_at: int = Field(
+        ..., alias="expiresAt", description="When this action expires (epoch milliseconds)"
+    )
+
+    model_config = ConfigDict(populate_by_name=True)
+
+
+class BuyNumberResponse(BaseModel):
+    """Response from buying a number.
+
+    ``status`` is one of ``provisioning``, ``documents_required``, or
+    ``payment_required``. When documents or payment are required, ``action``
+    carries the hosted-page hand-off; ``requirements`` describes what is
+    outstanding.
+    """
+
+    status: str = Field(
+        ..., description="provisioning | documents_required | payment_required"
+    )
+    number: Optional[BuyNumberRef] = Field(
+        default=None, description="The provisioned number (when available)"
+    )
+    requirements: Optional[Any] = Field(
+        default=None,
+        description="Outstanding requirements (when documents_required/payment_required)",
+    )
+    action: Optional[NumberAction] = Field(
+        default=None,
+        description="Hosted-page hand-off (when documents_required/payment_required)",
+    )
+
+    model_config = ConfigDict(populate_by_name=True)

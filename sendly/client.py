@@ -19,6 +19,7 @@ from .resources.enterprise import AsyncEnterpriseResource, EnterpriseResource
 from .resources.labels import AsyncLabelsResource, LabelsResource
 from .resources.media import AsyncMediaResource, MediaResource
 from .resources.messages import AsyncMessagesResource, MessagesResource
+from .resources.numbers import AsyncNumbersResource, NumbersResource
 from .resources.rules import AsyncRulesResource, RulesResource
 from .resources.templates import AsyncTemplatesResource, TemplatesResource
 from .resources.verify import AsyncVerifyResource, VerifyResource
@@ -117,6 +118,7 @@ class Sendly:
         self.campaigns = CampaignsResource(self._http)
         self.contacts = ContactsResource(self._http)
         self.media = MediaResource(self._http)
+        self.numbers = NumbersResource(self._http)
         self.enterprise = EnterpriseResource(self._http)
         self.labels = LabelsResource(self._http)
         self.drafts = DraftsResource(self._http)
@@ -255,6 +257,7 @@ class AsyncSendly:
         self.campaigns = AsyncCampaignsResource(self._http)
         self.contacts = AsyncContactsResource(self._http)
         self.media = AsyncMediaResource(self._http)
+        self.numbers = AsyncNumbersResource(self._http)
         self.enterprise = AsyncEnterpriseResource(self._http)
         self.labels = AsyncLabelsResource(self._http)
         self.drafts = AsyncDraftsResource(self._http)

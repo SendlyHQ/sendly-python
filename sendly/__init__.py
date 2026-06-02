@@ -52,6 +52,7 @@ from .resources.business_upgrade import (
     BusinessUpgradeResource,
 )
 from .resources.media import AsyncMediaResource, MediaResource
+from .resources.numbers import AsyncNumbersResource, NumbersResource
 
 # Types
 from .types import (
@@ -115,6 +116,16 @@ from .types import (
     MessageAnalyticsDataPoint,
     MessageListResponse,
     MessageStatus,
+    # Numbers types
+    AvailableNumber,
+    AvailableNumbersResponse,
+    BuyNumberRef,
+    BuyNumberResponse,
+    NumberAction,
+    NumberCountriesResponse,
+    NumberCountry,
+    OwnedNumber,
+    OwnedNumbersResponse,
     OptInPage,
     PricingTier,
     QuotaSettings,
@@ -251,9 +262,22 @@ __all__ = [
     "CreateLabelRequest",
     "Label",
     "LabelListResponse",
+    # Numbers types
+    "AvailableNumber",
+    "AvailableNumbersResponse",
+    "BuyNumberRef",
+    "BuyNumberResponse",
+    "NumberAction",
+    "NumberCountriesResponse",
+    "NumberCountry",
+    "OwnedNumber",
+    "OwnedNumbersResponse",
     # Media resources
     "MediaResource",
     "AsyncMediaResource",
+    # Numbers resources
+    "NumbersResource",
+    "AsyncNumbersResource",
     # Business upgrade resources
     "BusinessUpgradeResource",
     "AsyncBusinessUpgradeResource",

@@ -371,6 +371,57 @@ print(f"New key: {result['key']}")  # Only shown once!
 client.account.revoke_api_key('key_xxx')
 ```
 
+## Phone Numbers
+
+Search for and buy phone numbers. Prices on available numbers are already
+customer-priced. Requires an API key with the `numbers:read` / `numbers:write`
+scopes.
+
+```python
+# List the countries where numbers are available
+countries = client.numbers.list_countries()
+for country in countries.countries:
+    print(f'{country.code} {country.name}: {country.number_types}')
+
+# Search for available numbers (already customer-priced)
+available = client.numbers.list_available(country='GB', type='mobile')
+for num in available.numbers:
+    print(f'{num.phone_number} — {num.monthly_cost} {num.currency}')
+
+# Optionally filter by a digit pattern
+available = client.numbers.list_available(country='GB', type='mobile', contains='777')
+
+# List the numbers you already own
+owned = client.numbers.list()
+for num in owned.numbers:
+    print(f'{num.phone_number} ({num.status})')
+
+# Buy a number
+chosen = available.numbers[0]
+result = client.numbers.buy(
+    phone_number=chosen.phone_number,
+    country_code='GB',
+    phone_number_type='mobile',
+    monthly_cost=chosen.monthly_cost,
+)
+
+if result.status == 'provisioning':
+    print(f'Provisioning {result.number.phone_number}')
+elif result.status in ('documents_required', 'payment_required'):
+    # Hand the user the hosted Sendly page + code, wait for them to finish,
+    # then call buy() again with the same arguments plus action_code set to
+    # the completed action's code.
+    print(f'Open {result.action.url} and enter code {result.action.code}')
+    # ...later, after the user completes the page...
+    result = client.numbers.buy(
+        phone_number=chosen.phone_number,
+        country_code='GB',
+        phone_number_type='mobile',
+        monthly_cost=chosen.monthly_cost,
+        action_code=result.action.code,
+    )
+```
+
 ## Error Handling
 
 The SDK provides typed exception classes:
@@ -558,6 +609,24 @@ List sent messages.
 #### `get(id) -> Message`
 
 Get a specific message by ID.
+
+### `client.numbers`
+
+#### `list_countries() -> NumberCountriesResponse`
+
+List the countries where numbers can be searched and purchased.
+
+#### `list_available(country, type, contains=None) -> AvailableNumbersResponse`
+
+Search for available numbers, already customer-priced.
+
+#### `list() -> OwnedNumbersResponse`
+
+List the numbers the account already owns.
+
+#### `buy(phone_number, country_code, phone_number_type, monthly_cost, action_code=None) -> BuyNumberResponse`
+
+Buy a number. Returns `status` of `provisioning`, `documents_required`, or `payment_required`; when documents/payment are required, `action` carries a hosted page URL + code to hand to the user before re-calling with `action_code`.
 
 ## Enterprise
 
