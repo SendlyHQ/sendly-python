@@ -1730,6 +1730,21 @@ class OwnedNumber(BaseModel):
     monthly_cost_cents: int = Field(
         ..., alias="monthlyCostCents", description="Monthly cost in cents, already customer-priced"
     )
+    requirements_submitted_at: Optional[str] = Field(
+        default=None,
+        alias="requirementsSubmittedAt",
+        description="When regulatory documents were submitted for carrier review; null if still required",
+    )
+    pending_cancellation: bool = Field(
+        ...,
+        alias="pendingCancellation",
+        description="Whether the number is scheduled for release at period end",
+    )
+    scheduled_release_at: Optional[str] = Field(
+        default=None,
+        alias="scheduledReleaseAt",
+        description="When the number is scheduled to be released; null if not scheduled",
+    )
 
     model_config = ConfigDict(populate_by_name=True)
 
