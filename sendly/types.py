@@ -1736,7 +1736,7 @@ class OwnedNumber(BaseModel):
         description="When regulatory documents were submitted for carrier review; null if still required",
     )
     pending_cancellation: bool = Field(
-        ...,
+        default=False,
         alias="pendingCancellation",
         description="Whether the number is scheduled for release at period end",
     )
