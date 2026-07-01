@@ -422,6 +422,47 @@ elif result.status in ('documents_required', 'payment_required'):
     )
 ```
 
+## 10DLC (Local Number Texting)
+
+Register your business for carrier review so you can text from local
+(10-digit) US numbers. Requires an API key with the `tendlc:read` /
+`tendlc:write` scopes; writes need a live key. The flow has three steps:
+brand → campaign → assign a number.
+
+```python
+# 1. Register a brand and poll until it's verified
+brand = client.ten_dlc.create_brand(
+    legal_name='Acme Holdings LLC',
+    ein='12-3456789',
+    website='https://acme.example',
+    email='ops@acme.example',
+).data
+# ...poll client.ten_dlc.get_brand(brand.id) until brand.status == 'verified'
+# (or 'failed', with brand.failure_reasons explaining why)
+
+# 2. Pre-check the use case, then create a campaign
+check = client.ten_dlc.qualify(brand.id, 'MIXED').data
+if check.qualified:
+    campaign = client.ten_dlc.create_campaign(
+        brand_id=brand.id,
+        use_case='MIXED',
+        description='Order updates and support replies for Acme customers',
+        message_flow='Customers opt in at checkout on acme.example',
+        sample_messages=['Your order #123 has shipped!'],
+        opt_out_keywords='STOP',
+    ).data
+    # ...poll client.ten_dlc.get_campaign(campaign.id) until status == 'active'
+
+    # 3. Assign a number you own; it can send once the assignment is 'Active'
+    assignment = client.ten_dlc.assign_number(campaign.id, '+15551234567').data
+    print(assignment.status)
+
+# List what you have registered
+brands = client.ten_dlc.list_brands()
+campaigns = client.ten_dlc.list_campaigns()
+assignments = client.ten_dlc.list_assignments()
+```
+
 ## Error Handling
 
 The SDK provides typed exception classes:
@@ -627,6 +668,44 @@ List the numbers the account already owns.
 #### `buy(phone_number, country_code, phone_number_type, monthly_cost, action_code=None) -> BuyNumberResponse`
 
 Buy a number. Returns `status` of `provisioning`, `documents_required`, or `payment_required`; when documents/payment are required, `action` carries a hosted page URL + code to hand to the user before re-calling with `action_code`.
+
+### `client.ten_dlc`
+
+#### `list_brands() -> TenDlcBrandListResponse`
+
+List the brands registered for carrier review.
+
+#### `create_brand(legal_name, dba=None, ein=None, entity_type=None, ...) -> TenDlcBrandResponse`
+
+Register a brand for carrier review — step 1 of enabling local-number texting. The brand starts `pending`; poll `get_brand()` until it becomes `verified`.
+
+#### `get_brand(id) -> TenDlcBrandResponse`
+
+Fetch one brand; also refreshes its carrier-review status, so polling shows progress (`pending` → `verified`/`failed`).
+
+#### `qualify(brand_id, use_case) -> TenDlcQualifyResponse`
+
+Pre-check whether a use case qualifies for a brand on the carrier network before creating a campaign.
+
+#### `list_campaigns() -> TenDlcCampaignListResponse`
+
+List your messaging campaigns.
+
+#### `create_campaign(brand_id, use_case, description, message_flow, sample_messages, ...) -> TenDlcCampaignResponse`
+
+Create a campaign under a verified brand and submit it for carrier review. Starts `pending`; poll `get_campaign()` until it becomes `active`.
+
+#### `get_campaign(id) -> TenDlcCampaignResponse`
+
+Fetch one campaign; also refreshes its carrier-review status, including throughput once carriers approve.
+
+#### `assign_number(campaign_id, phone_number) -> TenDlcAssignmentResponse`
+
+Assign a number you own to an active campaign, making the number sendable. Idempotent — re-assigning the same number to the same campaign returns the existing assignment.
+
+#### `list_assignments() -> TenDlcAssignmentListResponse`
+
+List your number-to-campaign assignments.
 
 ## Enterprise
 

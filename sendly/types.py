@@ -1834,3 +1834,192 @@ class BuyNumberResponse(BaseModel):
     )
 
     model_config = ConfigDict(populate_by_name=True)
+
+
+# ============================================================================
+# 10DLC
+# ============================================================================
+
+
+class TenDlcBrand(BaseModel):
+    """A business identity registered for carrier review"""
+
+    id: str = Field(..., description="Unique brand identifier")
+    legal_name: str = Field(..., alias="legalName", description="Legal business name")
+    dba: Optional[str] = Field(
+        default=None, description='"Doing business as" name, if different from the legal name'
+    )
+    entity_type: str = Field(
+        ...,
+        alias="entityType",
+        description="Business entity type (e.g. PRIVATE_PROFIT, SOLE_PROPRIETOR)",
+    )
+    ein: Optional[str] = Field(
+        default=None, description="Business registration number (e.g. EIN)"
+    )
+    vertical: Optional[str] = Field(default=None, description="Industry vertical")
+    website: Optional[str] = Field(default=None, description="Business website URL")
+    status: str = Field(
+        ..., description="Carrier-review status: pending | verified | failed"
+    )
+    identity_status: Optional[str] = Field(
+        default=None,
+        alias="identityStatus",
+        description="Identity-verification detail from the carrier review, when available",
+    )
+    failure_reasons: Optional[List[str]] = Field(
+        default=None,
+        alias="failureReasons",
+        description="Why the review failed, when status is failed",
+    )
+    created_at: str = Field(
+        ..., alias="createdAt", description="When the brand was created (ISO 8601)"
+    )
+    updated_at: str = Field(
+        ..., alias="updatedAt", description="When the brand was last updated (ISO 8601)"
+    )
+
+    model_config = ConfigDict(populate_by_name=True)
+
+
+class TenDlcBrandListResponse(BaseModel):
+    """Response from listing brands"""
+
+    data: List[TenDlcBrand] = Field(..., description="Brands registered for carrier review")
+
+
+class TenDlcBrandResponse(BaseModel):
+    """Response from creating or fetching a brand"""
+
+    data: TenDlcBrand = Field(..., description="The brand")
+
+
+class TenDlcThroughput(BaseModel):
+    """Messaging throughput granted by the carrier network"""
+
+    tier: str = Field(
+        ..., description="Throughput tier (High volume | Standard | Low volume)"
+    )
+    carriers_ready: int = Field(
+        ...,
+        alias="carriersReady",
+        description="How many carriers have accepted the campaign so far",
+    )
+
+    model_config = ConfigDict(populate_by_name=True)
+
+
+class TenDlcQualifyResult(BaseModel):
+    """Result of a use-case qualification pre-check"""
+
+    use_case: str = Field(
+        ...,
+        alias="useCase",
+        description="The use-case code that was checked (e.g. MIXED, MARKETING)",
+    )
+    qualified: bool = Field(..., description="Whether the use case qualifies for this brand")
+    reason: Optional[str] = Field(
+        default=None, description="Why the use case does not qualify, when qualified is false"
+    )
+    throughput: Optional[TenDlcThroughput] = Field(
+        default=None, description="Expected throughput, when the carrier network reports it"
+    )
+
+    model_config = ConfigDict(populate_by_name=True)
+
+
+class TenDlcQualifyResponse(BaseModel):
+    """Response from a use-case qualification pre-check"""
+
+    data: TenDlcQualifyResult = Field(..., description="The qualification result")
+
+
+class TenDlcCampaign(BaseModel):
+    """A messaging campaign registered for carrier review"""
+
+    id: str = Field(..., description="Unique campaign identifier")
+    brand_id: str = Field(
+        ..., alias="brandId", description="The brand this campaign belongs to"
+    )
+    use_case: str = Field(
+        ..., alias="useCase", description="Primary use-case code (e.g. MIXED, MARKETING)"
+    )
+    sub_use_cases: List[str] = Field(
+        ..., alias="subUseCases", description="Sub-use-case codes"
+    )
+    description: Optional[str] = Field(
+        default=None, description="What the campaign sends and why"
+    )
+    status: str = Field(
+        ...,
+        description="Carrier-review status: pending | active | failed | suspended | expired",
+    )
+    sample_messages: List[str] = Field(
+        ..., alias="sampleMessages", description="Example messages the campaign sends"
+    )
+    throughput: Optional[TenDlcThroughput] = Field(
+        default=None, description="Granted throughput, once carriers approve"
+    )
+    failure_reasons: Optional[List[str]] = Field(
+        default=None,
+        alias="failureReasons",
+        description="Why the review failed, when status is failed",
+    )
+    created_at: str = Field(
+        ..., alias="createdAt", description="When the campaign was created (ISO 8601)"
+    )
+    updated_at: str = Field(
+        ..., alias="updatedAt", description="When the campaign was last updated (ISO 8601)"
+    )
+
+    model_config = ConfigDict(populate_by_name=True)
+
+
+class TenDlcCampaignListResponse(BaseModel):
+    """Response from listing campaigns"""
+
+    data: List[TenDlcCampaign] = Field(..., description="Messaging campaigns")
+
+
+class TenDlcCampaignResponse(BaseModel):
+    """Response from creating or fetching a campaign"""
+
+    data: TenDlcCampaign = Field(..., description="The campaign")
+
+
+class TenDlcAssignment(BaseModel):
+    """A phone number assigned to a campaign"""
+
+    id: str = Field(..., description="Unique assignment identifier")
+    campaign_id: str = Field(
+        ..., alias="campaignId", description="The campaign the number is assigned to"
+    )
+    phone_number: str = Field(
+        ..., alias="phoneNumber", description="The assigned phone number in E.164 format"
+    )
+    status: str = Field(
+        ...,
+        description=(
+            "Assignment status (Active | Under review | Action needed); "
+            "the number can send once Active"
+        ),
+    )
+    assigned_at: Optional[str] = Field(
+        default=None,
+        alias="assignedAt",
+        description="When the assignment completed (ISO 8601), or None while in progress",
+    )
+
+    model_config = ConfigDict(populate_by_name=True)
+
+
+class TenDlcAssignmentResponse(BaseModel):
+    """Response from assigning a number to a campaign"""
+
+    data: TenDlcAssignment = Field(..., description="The assignment")
+
+
+class TenDlcAssignmentListResponse(BaseModel):
+    """Response from listing number-to-campaign assignments"""
+
+    data: List[TenDlcAssignment] = Field(..., description="Number-to-campaign assignments")

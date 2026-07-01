@@ -22,6 +22,7 @@ from .resources.messages import AsyncMessagesResource, MessagesResource
 from .resources.numbers import AsyncNumbersResource, NumbersResource
 from .resources.rules import AsyncRulesResource, RulesResource
 from .resources.templates import AsyncTemplatesResource, TemplatesResource
+from .resources.tendlc import AsyncTenDlcResource, TenDlcResource
 from .resources.verify import AsyncVerifyResource, VerifyResource
 from .resources.webhooks import AsyncWebhooksResource, WebhooksResource
 from .types import RateLimitInfo, SendlyConfig
@@ -119,6 +120,7 @@ class Sendly:
         self.contacts = ContactsResource(self._http)
         self.media = MediaResource(self._http)
         self.numbers = NumbersResource(self._http)
+        self.ten_dlc = TenDlcResource(self._http)
         self.enterprise = EnterpriseResource(self._http)
         self.labels = LabelsResource(self._http)
         self.drafts = DraftsResource(self._http)
@@ -258,6 +260,7 @@ class AsyncSendly:
         self.contacts = AsyncContactsResource(self._http)
         self.media = AsyncMediaResource(self._http)
         self.numbers = AsyncNumbersResource(self._http)
+        self.ten_dlc = AsyncTenDlcResource(self._http)
         self.enterprise = AsyncEnterpriseResource(self._http)
         self.labels = AsyncLabelsResource(self._http)
         self.drafts = AsyncDraftsResource(self._http)

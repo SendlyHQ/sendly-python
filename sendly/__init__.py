@@ -53,6 +53,7 @@ from .resources.business_upgrade import (
 )
 from .resources.media import AsyncMediaResource, MediaResource
 from .resources.numbers import AsyncNumbersResource, NumbersResource
+from .resources.tendlc import AsyncTenDlcResource, TenDlcResource
 
 # Types
 from .types import (
@@ -126,6 +127,19 @@ from .types import (
     NumberCountry,
     OwnedNumber,
     OwnedNumbersResponse,
+    # 10DLC types
+    TenDlcAssignment,
+    TenDlcAssignmentListResponse,
+    TenDlcAssignmentResponse,
+    TenDlcBrand,
+    TenDlcBrandListResponse,
+    TenDlcBrandResponse,
+    TenDlcCampaign,
+    TenDlcCampaignListResponse,
+    TenDlcCampaignResponse,
+    TenDlcQualifyResponse,
+    TenDlcQualifyResult,
+    TenDlcThroughput,
     OptInPage,
     PricingTier,
     QuotaSettings,
@@ -272,12 +286,28 @@ __all__ = [
     "NumberCountry",
     "OwnedNumber",
     "OwnedNumbersResponse",
+    # 10DLC types
+    "TenDlcAssignment",
+    "TenDlcAssignmentListResponse",
+    "TenDlcAssignmentResponse",
+    "TenDlcBrand",
+    "TenDlcBrandListResponse",
+    "TenDlcBrandResponse",
+    "TenDlcCampaign",
+    "TenDlcCampaignListResponse",
+    "TenDlcCampaignResponse",
+    "TenDlcQualifyResponse",
+    "TenDlcQualifyResult",
+    "TenDlcThroughput",
     # Media resources
     "MediaResource",
     "AsyncMediaResource",
     # Numbers resources
     "NumbersResource",
     "AsyncNumbersResource",
+    # 10DLC resources
+    "TenDlcResource",
+    "AsyncTenDlcResource",
     # Business upgrade resources
     "BusinessUpgradeResource",
     "AsyncBusinessUpgradeResource",

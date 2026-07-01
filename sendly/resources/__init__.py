@@ -11,6 +11,7 @@ from .messages import AsyncMessagesResource, MessagesResource
 from .numbers import AsyncNumbersResource, NumbersResource
 from .rules import AsyncRulesResource, RulesResource
 from .templates import AsyncTemplatesResource, TemplatesResource
+from .tendlc import AsyncTenDlcResource, TenDlcResource
 from .verify import AsyncVerifyResource, VerifyResource
 
 __all__ = [
@@ -38,4 +39,6 @@ __all__ = [
     "AsyncTemplatesResource",
     "RulesResource",
     "AsyncRulesResource",
+    "TenDlcResource",
+    "AsyncTenDlcResource",
 ]
