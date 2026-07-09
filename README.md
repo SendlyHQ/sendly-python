@@ -367,6 +367,13 @@ print(f"Credits used: {usage['creditsUsed']}")
 result = client.account.create_api_key('Production Key')
 print(f"New key: {result['key']}")  # Only shown once!
 
+# Rotate an API key (old key keeps working for a 24h grace period by default)
+rotation = client.account.rotate_api_key('key_xxx')
+print(f"New key: {rotation['newKey']['key']}")  # Only shown once!
+
+# Rotate with a wider overlap window (24-168 hours)
+rotation = client.account.rotate_api_key('key_xxx', grace_period_hours=72)
+
 # Revoke an API key
 client.account.revoke_api_key('key_xxx')
 ```
@@ -395,6 +402,23 @@ available = client.numbers.list_available(country='GB', type='mobile', contains=
 owned = client.numbers.list()
 for num in owned.numbers:
     print(f'{num.phone_number} ({num.status})')
+
+# Get one owned number (includes whether it's your default sender)
+number = client.numbers.get('num_xxx')
+print(f'{number.phone_number} default={number.is_default}')
+
+# Make a number your default sender
+client.numbers.update('num_xxx', is_default=True)
+
+# Cancel a scheduled release and keep the number
+client.numbers.update('num_xxx', pending_cancellation=False)
+
+# Release a number (a paid number is kept until the end of the billed period)
+result = client.numbers.release('num_xxx')
+if result.scheduled:
+    print(f'Releases at {result.scheduled_release_at}')
+else:
+    print('Released')
 
 # Buy a number
 chosen = available.numbers[0]
@@ -461,6 +485,62 @@ if check.qualified:
 brands = client.ten_dlc.list_brands()
 campaigns = client.ten_dlc.list_campaigns()
 assignments = client.ten_dlc.list_assignments()
+```
+
+## Group MMS
+
+Send one message to 2-8 US/Canada recipients who share a single thread; replies
+fan out to everyone. Provide `text`, `media_urls`, or both. Requires the
+`group_mms` feature.
+
+```python
+group = client.messages.send_group(
+    to=['+14155551234', '+14155555678'],
+    text='Dinner at 7?'
+)
+print(f'{group.id}: {group.status}')  # 'sent' (or 'delivered' on a test key)
+print(group.group_message_id)         # stable group thread id, when available
+
+# With media
+client.messages.send_group(
+    to=['+14155551234', '+14155555678'],
+    text='Here is the menu',
+    media_urls=['https://example.com/menu.jpg'],
+)
+```
+
+## AI Enhance
+
+Polish message copy before sending. Pass `text` and/or a `message_type` to steer
+the tone.
+
+```python
+result = client.messages.enhance(text='ur order shipped', message_type='transactional')
+print(result.enhanced)     # cleaned-up copy
+print(result.explanation)  # why it changed
+```
+
+## Branded Links (URL Shortener)
+
+Mint branded short links for a destination URL, list them with click analytics,
+and flip a per-link kill switch. Branded, owned-domain links improve
+deliverability and give you click data. Gated behind the `url_shortener` flag.
+
+```python
+# Shorten a URL
+link = client.links.create('https://example.com/spring-sale?utm_source=sms')
+print(link.short_url)        # https://sendly.live/l/Ab3xY7
+print(link.code)             # Ab3xY7
+
+# List your links with click counts and a 14-day daily histogram
+listing = client.links.list(limit=20)
+print(f'{listing.total} links')
+for lk in listing.links:
+    print(f'{lk.short_url} -> {lk.destination_url} ({lk.click_count} clicks)')
+
+# Kill a link (its redirect 404s until re-enabled)
+client.links.disable(link.code)
+client.links.enable(link.code)
 ```
 
 ## Error Handling

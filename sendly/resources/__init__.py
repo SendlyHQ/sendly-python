@@ -6,6 +6,7 @@ from .conversations import AsyncConversationsResource, ConversationsResource
 from .drafts import AsyncDraftsResource, DraftsResource
 from .enterprise import AsyncEnterpriseResource, EnterpriseResource
 from .labels import AsyncLabelsResource, LabelsResource
+from .links import AsyncLinksResource, LinksResource
 from .media import AsyncMediaResource, MediaResource
 from .messages import AsyncMessagesResource, MessagesResource
 from .numbers import AsyncNumbersResource, NumbersResource
@@ -27,6 +28,8 @@ __all__ = [
     "AsyncEnterpriseResource",
     "LabelsResource",
     "AsyncLabelsResource",
+    "LinksResource",
+    "AsyncLinksResource",
     "MediaResource",
     "AsyncMediaResource",
     "MessagesResource",

@@ -14,6 +14,7 @@ completion is the CLI's job, not the SDK's.
 """
 
 from typing import Any, Dict, Optional
+from urllib.parse import quote
 
 from pydantic import ValidationError as PydanticValidationError
 
@@ -22,7 +23,9 @@ from ..types import (
     AvailableNumbersResponse,
     BuyNumberResponse,
     NumberCountriesResponse,
+    OwnedNumber,
     OwnedNumbersResponse,
+    ReleaseNumberResponse,
 )
 from ..utils.http import AsyncHttpClient, HttpClient
 
@@ -122,6 +125,66 @@ class NumbersResource:
         except PydanticValidationError as e:
             raise _invalid_response(e) from e
 
+    def get(self, id: str) -> OwnedNumber:
+        """Get a single owned number by its identifier."""
+        data = self._http.request(
+            method="GET", path=f"/numbers/{quote(id, safe='')}"
+        )
+        try:
+            return OwnedNumber(**_number_payload(data))
+        except PydanticValidationError as e:
+            raise _invalid_response(e) from e
+
+    def update(
+        self,
+        id: str,
+        *,
+        is_default: Optional[bool] = None,
+        pending_cancellation: Optional[bool] = None,
+    ) -> OwnedNumber:
+        """Update an owned number.
+
+        Args:
+            id: The number's identifier.
+            is_default: Set the number as the workspace's default sender.
+            pending_cancellation: Set to ``False`` to cancel a scheduled
+                release and keep the number.
+        """
+        body: Dict[str, Any] = {}
+        if is_default is not None:
+            body["isDefault"] = is_default
+        if pending_cancellation is not None:
+            body["pendingCancellation"] = pending_cancellation
+        if not body:
+            raise SendlyError(
+                message="Provide at least one field to update",
+                code="invalid_request",
+                status_code=400,
+            )
+
+        data = self._http.request(
+            method="PATCH", path=f"/numbers/{quote(id, safe='')}", body=body
+        )
+        try:
+            return OwnedNumber(**_number_payload(data))
+        except PydanticValidationError as e:
+            raise _invalid_response(e) from e
+
+    def release(self, id: str) -> ReleaseNumberResponse:
+        """Release an owned number, or schedule its release at period end.
+
+        A live, paid purchased number is kept until the end of the already-billed
+        period (the response's ``scheduled`` is True with a
+        ``scheduled_release_at``); everything else is released immediately.
+        """
+        data = self._http.request(
+            method="DELETE", path=f"/numbers/{quote(id, safe='')}"
+        )
+        try:
+            return ReleaseNumberResponse(**data)
+        except PydanticValidationError as e:
+            raise _invalid_response(e) from e
+
 
 class AsyncNumbersResource:
     """Numbers API resource (async)"""
@@ -185,6 +248,65 @@ class AsyncNumbersResource:
             return BuyNumberResponse(**data)
         except PydanticValidationError as e:
             raise _invalid_response(e) from e
+
+    async def get(self, id: str) -> OwnedNumber:
+        """Get a single owned number by its identifier."""
+        data = await self._http.request(
+            method="GET", path=f"/numbers/{quote(id, safe='')}"
+        )
+        try:
+            return OwnedNumber(**_number_payload(data))
+        except PydanticValidationError as e:
+            raise _invalid_response(e) from e
+
+    async def update(
+        self,
+        id: str,
+        *,
+        is_default: Optional[bool] = None,
+        pending_cancellation: Optional[bool] = None,
+    ) -> OwnedNumber:
+        """Update an owned number. See :meth:`NumbersResource.update`."""
+        body: Dict[str, Any] = {}
+        if is_default is not None:
+            body["isDefault"] = is_default
+        if pending_cancellation is not None:
+            body["pendingCancellation"] = pending_cancellation
+        if not body:
+            raise SendlyError(
+                message="Provide at least one field to update",
+                code="invalid_request",
+                status_code=400,
+            )
+
+        data = await self._http.request(
+            method="PATCH", path=f"/numbers/{quote(id, safe='')}", body=body
+        )
+        try:
+            return OwnedNumber(**_number_payload(data))
+        except PydanticValidationError as e:
+            raise _invalid_response(e) from e
+
+    async def release(self, id: str) -> ReleaseNumberResponse:
+        """Release an owned number. See :meth:`NumbersResource.release`."""
+        data = await self._http.request(
+            method="DELETE", path=f"/numbers/{quote(id, safe='')}"
+        )
+        try:
+            return ReleaseNumberResponse(**data)
+        except PydanticValidationError as e:
+            raise _invalid_response(e) from e
+
+
+def _number_payload(data: Any) -> Any:
+    """Unwrap a single-number response.
+
+    ``get``/``update`` may return the number bare or nested under a ``number``
+    key (as the buy response does); accept either shape.
+    """
+    if isinstance(data, dict) and "number" in data:
+        return data["number"]
+    return data
 
 
 def _invalid_response(e: PydanticValidationError) -> SendlyError:

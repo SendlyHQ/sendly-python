@@ -51,6 +51,7 @@ from .resources.business_upgrade import (
     AsyncBusinessUpgradeResource,
     BusinessUpgradeResource,
 )
+from .resources.links import AsyncLinksResource, LinksResource
 from .resources.media import AsyncMediaResource, MediaResource
 from .resources.numbers import AsyncNumbersResource, NumbersResource
 from .resources.tendlc import AsyncTenDlcResource, TenDlcResource
@@ -127,6 +128,16 @@ from .types import (
     NumberCountry,
     OwnedNumber,
     OwnedNumbersResponse,
+    ReleaseNumberResponse,
+    # Group MMS + AI types
+    EnhanceMessageResponse,
+    GroupMessageResponse,
+    SendGroupMessageRequest,
+    # URL shortener types
+    CreateShortLinkResponse,
+    ShortLink,
+    ShortLinkListResponse,
+    UpdateShortLinkResponse,
     # 10DLC types
     TenDlcAssignment,
     TenDlcAssignmentListResponse,
@@ -286,6 +297,16 @@ __all__ = [
     "NumberCountry",
     "OwnedNumber",
     "OwnedNumbersResponse",
+    "ReleaseNumberResponse",
+    # Group MMS + AI types
+    "EnhanceMessageResponse",
+    "GroupMessageResponse",
+    "SendGroupMessageRequest",
+    # URL shortener types
+    "CreateShortLinkResponse",
+    "ShortLink",
+    "ShortLinkListResponse",
+    "UpdateShortLinkResponse",
     # 10DLC types
     "TenDlcAssignment",
     "TenDlcAssignmentListResponse",
@@ -299,6 +320,9 @@ __all__ = [
     "TenDlcQualifyResponse",
     "TenDlcQualifyResult",
     "TenDlcThroughput",
+    # Links resources
+    "LinksResource",
+    "AsyncLinksResource",
     # Media resources
     "MediaResource",
     "AsyncMediaResource",

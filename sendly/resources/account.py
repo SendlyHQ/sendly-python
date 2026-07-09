@@ -192,6 +192,42 @@ class AccountResource:
 
         self._http.request("DELETE", f"/account/keys/{key_id}")
 
+    def rotate_api_key(
+        self, key_id: str, grace_period_hours: Optional[int] = None
+    ) -> Dict[str, Any]:
+        """
+        Rotate an API key.
+
+        Mints a replacement key and, by default, keeps the old key working for a
+        24-hour grace period so you can roll the new secret out before the old
+        one stops. Pass ``grace_period_hours`` (24-168) to widen the window, or
+        the caller can revoke the old key immediately once the new one is live.
+
+        Args:
+            key_id: ID of the API key to rotate
+            grace_period_hours: Overlap window in hours (24-168, default 24)
+
+        Returns:
+            Dict with 'newKey' (metadata plus the full 'key' secret - only shown
+            once - and a 'warning'), 'oldKey' (the predecessor), and 'message'
+
+        Example:
+            >>> result = client.account.rotate_api_key('key_xxx')
+            >>> print(f"Save this key: {result['newKey']['key']}")  # Only shown once!
+        """
+        if not key_id:
+            raise ValueError("API key ID is required")
+
+        body: Dict[str, Any] = {}
+        if grace_period_hours is not None:
+            if not isinstance(grace_period_hours, int) or not (
+                24 <= grace_period_hours <= 168
+            ):
+                raise ValueError("grace_period_hours must be between 24 and 168")
+            body["gracePeriodHours"] = grace_period_hours
+
+        return self._http.request("POST", f"/account/keys/{key_id}/rotate", body=body)
+
 
 class AsyncAccountResource:
     """
@@ -284,3 +320,36 @@ class AsyncAccountResource:
             raise ValueError("API key ID is required")
 
         await self._http.request("DELETE", f"/account/keys/{key_id}")
+
+    async def rotate_api_key(
+        self, key_id: str, grace_period_hours: Optional[int] = None
+    ) -> Dict[str, Any]:
+        """
+        Rotate an API key (async).
+
+        Mints a replacement key and, by default, keeps the old key working for a
+        24-hour grace period. Pass ``grace_period_hours`` (24-168) to widen the
+        overlap window.
+
+        Args:
+            key_id: ID of the API key to rotate
+            grace_period_hours: Overlap window in hours (24-168, default 24)
+
+        Returns:
+            Dict with 'newKey' (metadata plus the full 'key' secret - only shown
+            once - and a 'warning'), 'oldKey' (the predecessor), and 'message'
+        """
+        if not key_id:
+            raise ValueError("API key ID is required")
+
+        body: Dict[str, Any] = {}
+        if grace_period_hours is not None:
+            if not isinstance(grace_period_hours, int) or not (
+                24 <= grace_period_hours <= 168
+            ):
+                raise ValueError("grace_period_hours must be between 24 and 168")
+            body["gracePeriodHours"] = grace_period_hours
+
+        return await self._http.request(
+            "POST", f"/account/keys/{key_id}/rotate", body=body
+        )

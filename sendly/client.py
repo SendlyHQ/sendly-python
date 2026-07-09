@@ -17,6 +17,7 @@ from .resources.conversations import AsyncConversationsResource, ConversationsRe
 from .resources.drafts import AsyncDraftsResource, DraftsResource
 from .resources.enterprise import AsyncEnterpriseResource, EnterpriseResource
 from .resources.labels import AsyncLabelsResource, LabelsResource
+from .resources.links import AsyncLinksResource, LinksResource
 from .resources.media import AsyncMediaResource, MediaResource
 from .resources.messages import AsyncMessagesResource, MessagesResource
 from .resources.numbers import AsyncNumbersResource, NumbersResource
@@ -123,6 +124,7 @@ class Sendly:
         self.ten_dlc = TenDlcResource(self._http)
         self.enterprise = EnterpriseResource(self._http)
         self.labels = LabelsResource(self._http)
+        self.links = LinksResource(self._http)
         self.drafts = DraftsResource(self._http)
         self.rules = RulesResource(self._http)
         self.business_upgrade = BusinessUpgradeResource(self._http)
@@ -263,6 +265,7 @@ class AsyncSendly:
         self.ten_dlc = AsyncTenDlcResource(self._http)
         self.enterprise = AsyncEnterpriseResource(self._http)
         self.labels = AsyncLabelsResource(self._http)
+        self.links = AsyncLinksResource(self._http)
         self.drafts = AsyncDraftsResource(self._http)
         self.rules = AsyncRulesResource(self._http)
         self.business_upgrade = AsyncBusinessUpgradeResource(self._http)

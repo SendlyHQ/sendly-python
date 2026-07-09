@@ -424,6 +424,73 @@ class ListBatchesOptions(BaseModel):
 
 
 # ============================================================================
+# Group MMS
+# ============================================================================
+
+
+class SendGroupMessageRequest(BaseModel):
+    """Request payload for sending a group MMS (2-8 US/CA recipients)"""
+
+    to: List[str] = Field(
+        ...,
+        description="Group recipients in E.164 format (2-8 US/CA numbers)",
+        min_length=2,
+        max_length=8,
+    )
+    text: Optional[str] = Field(default=None, description="Message content")
+    from_: Optional[str] = Field(
+        default=None, alias="from", description="Sender ID or phone number"
+    )
+    media_urls: Optional[List[str]] = Field(
+        default=None, alias="mediaUrls", description="Media URLs for the group MMS"
+    )
+    message_type: Optional[MessageType] = Field(
+        default=None,
+        alias="messageType",
+        description="Message type: 'marketing' or 'transactional' (default)",
+    )
+
+    model_config = ConfigDict(populate_by_name=True)
+
+
+class GroupMessageResponse(BaseModel):
+    """Response from sending a group MMS"""
+
+    id: str = Field(..., description="Unique message identifier")
+    status: str = Field(..., description="Delivery status ('sent' or 'delivered')")
+    to: List[str] = Field(..., description="Recipients the group message was sent to")
+    group_message_id: Optional[str] = Field(
+        default=None,
+        description="Stable group thread identifier (grp_xxx), when available",
+    )
+    simulated: Optional[bool] = Field(
+        default=None, description="True when sent from a sandbox/test key"
+    )
+
+    model_config = ConfigDict(populate_by_name=True)
+
+
+# ============================================================================
+# AI Enhance
+# ============================================================================
+
+
+class EnhanceMessageResponse(BaseModel):
+    """Response from the AI message-enhancement endpoint"""
+
+    enhanced: str = Field(..., description="Enhanced message text (<=160 chars)")
+    explanation: str = Field(
+        ...,
+        description="Why the message changed; empty when AI was unavailable",
+    )
+    model: Optional[str] = Field(
+        default=None, description="Model that produced the enhancement"
+    )
+
+    model_config = ConfigDict(populate_by_name=True)
+
+
+# ============================================================================
 # Errors
 # ============================================================================
 
@@ -1730,6 +1797,11 @@ class OwnedNumber(BaseModel):
     monthly_cost_cents: int = Field(
         ..., alias="monthlyCostCents", description="Monthly cost in cents, already customer-priced"
     )
+    is_default: Optional[bool] = Field(
+        default=None,
+        alias="isDefault",
+        description="Whether this is the workspace's default sender; omitted on the list endpoint",
+    )
     requirements_submitted_at: Optional[str] = Field(
         default=None,
         alias="requirementsSubmittedAt",
@@ -1753,6 +1825,31 @@ class OwnedNumbersResponse(BaseModel):
     """Response from listing owned numbers"""
 
     numbers: List[OwnedNumber] = Field(..., description="Owned numbers")
+
+
+class ReleaseNumberResponse(BaseModel):
+    """Response from releasing (or scheduling the release of) an owned number.
+
+    A live, paid purchased number is kept until the end of the already-billed
+    period, so ``scheduled`` is True and ``scheduled_release_at`` carries the
+    effective date. Everything else is released immediately (``scheduled`` is
+    False).
+    """
+
+    success: bool = Field(
+        default=True, description="Whether the release request was accepted"
+    )
+    scheduled: bool = Field(
+        default=False,
+        description="True when release is deferred to the end of the billed period",
+    )
+    scheduled_release_at: Optional[str] = Field(
+        default=None,
+        alias="scheduledReleaseAt",
+        description="When the scheduled release takes effect (ISO 8601), when scheduled",
+    )
+
+    model_config = ConfigDict(populate_by_name=True, extra="allow")
 
 
 class BuyNumberRef(BaseModel):
@@ -2023,3 +2120,72 @@ class TenDlcAssignmentListResponse(BaseModel):
     """Response from listing number-to-campaign assignments"""
 
     data: List[TenDlcAssignment] = Field(..., description="Number-to-campaign assignments")
+
+
+# ============================================================================
+# URL Shortener (branded links)
+# ============================================================================
+
+
+class ShortLink(BaseModel):
+    """A shortened (optionally branded) link with click analytics"""
+
+    code: str = Field(..., description="Short code identifying the link")
+    short_url: str = Field(..., alias="shortUrl", description="Full short URL to share")
+    destination_url: str = Field(
+        ..., alias="destinationUrl", description="Where the short link redirects"
+    )
+    brand_slug: Optional[str] = Field(
+        default=None,
+        alias="brandSlug",
+        description="Brand slug for a branded /l/:brand/:code link",
+    )
+    click_count: int = Field(
+        default=0, alias="clickCount", description="Total clicks recorded"
+    )
+    disabled: bool = Field(
+        default=False, description="Whether the link is disabled (kill switch)"
+    )
+    last_country: Optional[str] = Field(
+        default=None, alias="lastCountry", description="Country of the most recent click"
+    )
+    last_clicked_at: Optional[str] = Field(
+        default=None,
+        alias="lastClickedAt",
+        description="When the link was last clicked (ISO 8601)",
+    )
+    created_at: Optional[str] = Field(
+        default=None, alias="createdAt", description="When the link was created (ISO 8601)"
+    )
+    spark: List[int] = Field(
+        default_factory=list,
+        description="14-day daily click histogram, oldest first",
+    )
+
+    model_config = ConfigDict(populate_by_name=True)
+
+
+class CreateShortLinkResponse(BaseModel):
+    """Response from creating a short link"""
+
+    code: str = Field(..., description="Short code identifying the link")
+    short_url: str = Field(..., alias="shortUrl", description="Full short URL to share")
+    destination_url: str = Field(
+        ..., alias="destinationUrl", description="Where the short link redirects"
+    )
+
+    model_config = ConfigDict(populate_by_name=True)
+
+
+class ShortLinkListResponse(BaseModel):
+    """Response from listing short links"""
+
+    links: List[ShortLink] = Field(..., description="Short links, newest first")
+    total: int = Field(..., description="Total number of links")
+
+
+class UpdateShortLinkResponse(BaseModel):
+    """Response from enabling/disabling a short link"""
+
+    code: str = Field(..., description="Short code identifying the link")
+    disabled: bool = Field(..., description="Whether the link is now disabled")

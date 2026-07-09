@@ -14,6 +14,8 @@ from ..types import (
     BatchListResponse,
     BatchMessageResponse,
     CancelledMessageResponse,
+    EnhanceMessageResponse,
+    GroupMessageResponse,
     ListMessagesOptions,
     Message,
     MessageListResponse,
@@ -629,6 +631,146 @@ class MessagesResource:
             body=body,
         )
 
+    # =========================================================================
+    # Group MMS
+    # =========================================================================
+
+    def send_group(
+        self,
+        to: List[str],
+        text: Optional[str] = None,
+        from_: Optional[str] = None,
+        media_urls: Optional[List[str]] = None,
+        message_type: Optional[str] = None,
+        **kwargs: Any,
+    ) -> GroupMessageResponse:
+        """
+        Send a group MMS to 2-8 US/Canada recipients
+
+        Everyone in ``to`` shares one thread and replies fan out to all
+        participants. Requires the ``group_mms`` feature (and ``enable_mms``
+        when sending media). US/Canada destinations only.
+
+        Args:
+            to: 2-8 recipient phone numbers in E.164 format (US/CA only)
+            text: Message content (required unless media_urls is provided)
+            from_: Optional sender ID or phone number
+            media_urls: Optional media URLs for the group MMS
+            message_type: 'marketing' or 'transactional' (default)
+
+        Returns:
+            The created group message, including a group_message_id
+
+        Example:
+            >>> group = client.messages.send_group(
+            ...     to=['+14155551234', '+14155555678'],
+            ...     text='Dinner at 7?'
+            ... )
+            >>> print(group.id, group.group_message_id)
+        """
+        if not isinstance(to, list) or len(to) < 2:
+            raise SendlyError(
+                message="Group messaging needs at least 2 recipients in 'to'",
+                code="invalid_request",
+                status_code=400,
+            )
+        if len(to) > 8:
+            raise SendlyError(
+                message="Group messaging supports at most 8 recipients",
+                code="invalid_request",
+                status_code=400,
+            )
+        for recipient in to:
+            validate_phone_number(recipient)
+        if not text and not media_urls:
+            raise SendlyError(
+                message="Provide 'text' or 'media_urls'",
+                code="invalid_request",
+                status_code=400,
+            )
+        if from_:
+            validate_sender_id(from_)
+
+        body: Dict[str, Any] = {"to": to}
+        if text:
+            body["text"] = text
+        if from_:
+            body["from"] = from_
+        if media_urls:
+            body["mediaUrls"] = media_urls
+        if message_type:
+            body["messageType"] = message_type
+
+        data = self._http.request(
+            method="POST",
+            path="/messages/group",
+            body=body,
+        )
+
+        try:
+            return GroupMessageResponse(**data)
+        except PydanticValidationError as e:
+            raise SendlyError(
+                message=f"Invalid API response format: {e}",
+                code="invalid_response",
+                status_code=200,
+            ) from e
+
+    # =========================================================================
+    # AI Enhance
+    # =========================================================================
+
+    def enhance(
+        self,
+        text: Optional[str] = None,
+        message_type: Optional[str] = None,
+        **kwargs: Any,
+    ) -> EnhanceMessageResponse:
+        """
+        Enhance message copy with AI
+
+        Requires the ``ai_classification`` feature. When AI is unavailable the
+        original text is returned with an empty explanation.
+
+        Args:
+            text: Message text to enhance
+            message_type: 'marketing' or 'transactional' to steer the tone
+
+        Returns:
+            The enhanced text with a short explanation
+
+        Example:
+            >>> result = client.messages.enhance(text='ur order shipped')
+            >>> print(result.enhanced)
+        """
+        if not text and not message_type:
+            raise SendlyError(
+                message="Provide 'text' or 'message_type'",
+                code="invalid_request",
+                status_code=400,
+            )
+
+        body: Dict[str, Any] = {}
+        if text is not None:
+            body["text"] = text
+        if message_type:
+            body["messageType"] = message_type
+
+        data = self._http.request(
+            method="POST",
+            path="/ai/enhance",
+            body=body,
+        )
+
+        try:
+            return EnhanceMessageResponse(**data)
+        except PydanticValidationError as e:
+            raise SendlyError(
+                message=f"Invalid API response format: {e}",
+                code="invalid_response",
+                status_code=200,
+            ) from e
+
 
 class AsyncMessagesResource:
     """
@@ -1114,3 +1256,132 @@ class AsyncMessagesResource:
             path="/messages/batch/preview",
             body=body,
         )
+
+    # =========================================================================
+    # Group MMS
+    # =========================================================================
+
+    async def send_group(
+        self,
+        to: List[str],
+        text: Optional[str] = None,
+        from_: Optional[str] = None,
+        media_urls: Optional[List[str]] = None,
+        message_type: Optional[str] = None,
+        **kwargs: Any,
+    ) -> GroupMessageResponse:
+        """
+        Send a group MMS to 2-8 US/Canada recipients (async)
+
+        Everyone in ``to`` shares one thread and replies fan out to all
+        participants. Requires the ``group_mms`` feature (and ``enable_mms``
+        when sending media). US/Canada destinations only.
+
+        Args:
+            to: 2-8 recipient phone numbers in E.164 format (US/CA only)
+            text: Message content (required unless media_urls is provided)
+            from_: Optional sender ID or phone number
+            media_urls: Optional media URLs for the group MMS
+            message_type: 'marketing' or 'transactional' (default)
+
+        Returns:
+            The created group message, including a group_message_id
+        """
+        if not isinstance(to, list) or len(to) < 2:
+            raise SendlyError(
+                message="Group messaging needs at least 2 recipients in 'to'",
+                code="invalid_request",
+                status_code=400,
+            )
+        if len(to) > 8:
+            raise SendlyError(
+                message="Group messaging supports at most 8 recipients",
+                code="invalid_request",
+                status_code=400,
+            )
+        for recipient in to:
+            validate_phone_number(recipient)
+        if not text and not media_urls:
+            raise SendlyError(
+                message="Provide 'text' or 'media_urls'",
+                code="invalid_request",
+                status_code=400,
+            )
+        if from_:
+            validate_sender_id(from_)
+
+        body: Dict[str, Any] = {"to": to}
+        if text:
+            body["text"] = text
+        if from_:
+            body["from"] = from_
+        if media_urls:
+            body["mediaUrls"] = media_urls
+        if message_type:
+            body["messageType"] = message_type
+
+        data = await self._http.request(
+            method="POST",
+            path="/messages/group",
+            body=body,
+        )
+
+        try:
+            return GroupMessageResponse(**data)
+        except PydanticValidationError as e:
+            raise SendlyError(
+                message=f"Invalid API response format: {e}",
+                code="invalid_response",
+                status_code=200,
+            ) from e
+
+    # =========================================================================
+    # AI Enhance
+    # =========================================================================
+
+    async def enhance(
+        self,
+        text: Optional[str] = None,
+        message_type: Optional[str] = None,
+        **kwargs: Any,
+    ) -> EnhanceMessageResponse:
+        """
+        Enhance message copy with AI (async)
+
+        Requires the ``ai_classification`` feature. When AI is unavailable the
+        original text is returned with an empty explanation.
+
+        Args:
+            text: Message text to enhance
+            message_type: 'marketing' or 'transactional' to steer the tone
+
+        Returns:
+            The enhanced text with a short explanation
+        """
+        if not text and not message_type:
+            raise SendlyError(
+                message="Provide 'text' or 'message_type'",
+                code="invalid_request",
+                status_code=400,
+            )
+
+        body: Dict[str, Any] = {}
+        if text is not None:
+            body["text"] = text
+        if message_type:
+            body["messageType"] = message_type
+
+        data = await self._http.request(
+            method="POST",
+            path="/ai/enhance",
+            body=body,
+        )
+
+        try:
+            return EnhanceMessageResponse(**data)
+        except PydanticValidationError as e:
+            raise SendlyError(
+                message=f"Invalid API response format: {e}",
+                code="invalid_response",
+                status_code=200,
+            ) from e
