@@ -53,6 +53,22 @@ WebhookEventType = Literal[
     "verification.failed",
     "verification.resent",
     "verification.delivery_failed",
+    "brand.verified",
+    "brand.failed",
+    "campaign.approved",
+    "campaign.rejected",
+    "campaign.suspended",
+    "assignment.confirmed",
+    "assignment.failed",
+    "port.completed",
+    "port_out.requested",
+    "port_out.completed",
+    "port_out.rejected",
+    "port_out.cancelled",
+    "number.activated",
+    "number.failed",
+    "number.requirements_required",
+    "number.released",
 ]
 
 # Message status in webhook events
