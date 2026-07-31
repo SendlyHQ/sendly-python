@@ -26,6 +26,7 @@ from .resources.templates import AsyncTemplatesResource, TemplatesResource
 from .resources.tendlc import AsyncTenDlcResource, TenDlcResource
 from .resources.verify import AsyncVerifyResource, VerifyResource
 from .resources.webhooks import AsyncWebhooksResource, WebhooksResource
+from .resources.whatsapp import AsyncWhatsAppResource, WhatsAppResource
 from .types import RateLimitInfo, SendlyConfig
 from .utils.http import AsyncHttpClient, HttpClient
 
@@ -128,6 +129,7 @@ class Sendly:
         self.drafts = DraftsResource(self._http)
         self.rules = RulesResource(self._http)
         self.business_upgrade = BusinessUpgradeResource(self._http)
+        self.whatsapp = WhatsAppResource(self._http)
 
     def __enter__(self) -> "Sendly":
         return self
@@ -269,6 +271,7 @@ class AsyncSendly:
         self.drafts = AsyncDraftsResource(self._http)
         self.rules = AsyncRulesResource(self._http)
         self.business_upgrade = AsyncBusinessUpgradeResource(self._http)
+        self.whatsapp = AsyncWhatsAppResource(self._http)
 
     async def __aenter__(self) -> "AsyncSendly":
         return self

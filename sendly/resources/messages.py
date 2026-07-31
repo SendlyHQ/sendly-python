@@ -22,6 +22,7 @@ from ..types import (
     ScheduledMessage,
     ScheduledMessageListResponse,
     SendMessageRequest,
+    WhatsAppMessage,
 )
 from ..utils.http import AsyncHttpClient, HttpClient
 from ..utils.validation import (
@@ -50,25 +51,44 @@ class MessagesResource:
     def send(
         self,
         to: str,
-        text: str,
+        text: Optional[str] = None,
         from_: Optional[str] = None,
         message_type: Optional[str] = None,
         metadata: Optional[Dict[str, Any]] = None,
         media_urls: Optional[List[str]] = None,
+        channel: Optional[str] = None,
+        template: Optional[Dict[str, Any]] = None,
         **kwargs: Any,
-    ) -> Message:
+    ) -> Union[Message, WhatsAppMessage]:
         """
-        Send an SMS message
+        Send an SMS or WhatsApp message
+
+        Pass ``channel='whatsapp'`` to send on WhatsApp. WhatsApp sends
+        require a live API key and a ``from_`` number with an active WhatsApp
+        connection (see ``client.whatsapp.signup``). Free-form ``text`` and
+        media only deliver inside an open 24-hour customer-service window -
+        outside it, send an approved ``template`` instead (check with
+        ``client.whatsapp.window()``).
 
         Args:
             to: Destination phone number in E.164 format (e.g., +15551234567)
-            text: Message content
-            from_: Optional sender ID or phone number
+            text: Message content. On WhatsApp: free-form text (max 4096
+                bytes), or the caption when media_urls is provided (max 1024
+                bytes); requires an open 24-hour window
+            from_: Optional sender ID or phone number. Required on WhatsApp -
+                must be a number with an active WhatsApp connection
             message_type: Message type for compliance - 'marketing' (default, subject to quiet hours) or 'transactional' (24/7)
             metadata: Custom JSON metadata to attach to the message (max 4KB)
+            media_urls: URLs of media files to attach. WhatsApp accepts
+                exactly one per message
+            channel: Omit (or 'sms') for SMS; 'whatsapp' to send on WhatsApp
+            template: Approved WhatsApp template to send, works regardless of
+                the 24-hour window: {'name': 'order_shipped', 'language':
+                'en_US', 'variables': {'1': 'Acme Inc', '2': '#4821'}}
+                (optional 'buttons' for dynamic-URL button variables)
 
         Returns:
-            The created message
+            The created message (a WhatsAppMessage when channel='whatsapp')
 
         Raises:
             ValidationError: If the request is invalid
@@ -83,15 +103,68 @@ class MessagesResource:
             ... )
             >>> print(message.id)
             >>> print(message.status)
+
+        WhatsApp example:
+            >>> message = client.messages.send(
+            ...     channel='whatsapp',
+            ...     to='+15551234567',
+            ...     from_='+15559876543',
+            ...     template={
+            ...         'name': 'order_shipped',
+            ...         'language': 'en_US',
+            ...         'variables': {'1': 'Acme Inc', '2': '#4821'},
+            ...     },
+            ... )
+            >>> print(message.whatsapp.kind)  # 'template'
         """
         # Validate inputs
         validate_phone_number(to)
-        validate_message_text(text)
+
+        if channel == "whatsapp":
+            validate_phone_number(from_ or "")
+            has_media = bool(media_urls)
+            if not text and not has_media and not template:
+                raise SendlyError(
+                    message="Provide 'text', 'media_urls', or 'template'",
+                    code="invalid_request",
+                    status_code=400,
+                )
+
+            body: Dict[str, Any] = {
+                "channel": "whatsapp",
+                "to": to,
+                "from": from_,
+            }
+            if text is not None:
+                body["text"] = text
+            if has_media:
+                body["mediaUrls"] = media_urls
+            if template:
+                body["template"] = template
+            if metadata:
+                body["metadata"] = metadata
+
+            data = self._http.request(
+                method="POST",
+                path="/messages",
+                body=body,
+            )
+
+            try:
+                return WhatsAppMessage(**data)
+            except PydanticValidationError as e:
+                raise SendlyError(
+                    message=f"Invalid API response format: {e}",
+                    code="invalid_response",
+                    status_code=200,
+                ) from e
+
+        validate_message_text(text or "")
         if from_:
             validate_sender_id(from_)
 
         # Build request body
-        body: Dict[str, Any] = {
+        body = {
             "to": to,
             "text": text,
         }
@@ -788,25 +861,36 @@ class AsyncMessagesResource:
     async def send(
         self,
         to: str,
-        text: str,
+        text: Optional[str] = None,
         from_: Optional[str] = None,
         message_type: Optional[str] = None,
         metadata: Optional[Dict[str, Any]] = None,
         media_urls: Optional[List[str]] = None,
+        channel: Optional[str] = None,
+        template: Optional[Dict[str, Any]] = None,
         **kwargs: Any,
-    ) -> Message:
+    ) -> Union[Message, WhatsAppMessage]:
         """
-        Send an SMS message (async)
+        Send an SMS or WhatsApp message (async)
+
+        Pass ``channel='whatsapp'`` to send on WhatsApp. See
+        :meth:`MessagesResource.send` for the full parameter reference.
 
         Args:
             to: Destination phone number in E.164 format
-            text: Message content
-            from_: Optional sender ID or phone number
+            text: Message content. On WhatsApp, free-form text or the media
+                caption; requires an open 24-hour window
+            from_: Optional sender ID or phone number. Required on WhatsApp
             message_type: Message type for compliance - 'marketing' (default, subject to quiet hours) or 'transactional' (24/7)
             metadata: Custom JSON metadata to attach to the message (max 4KB)
+            media_urls: URLs of media files to attach. WhatsApp accepts
+                exactly one per message
+            channel: Omit (or 'sms') for SMS; 'whatsapp' to send on WhatsApp
+            template: Approved WhatsApp template to send, works regardless of
+                the 24-hour window
 
         Returns:
-            The created message
+            The created message (a WhatsAppMessage when channel='whatsapp')
 
         Example:
             >>> message = await client.messages.send(
@@ -816,12 +900,52 @@ class AsyncMessagesResource:
         """
         # Validate inputs
         validate_phone_number(to)
-        validate_message_text(text)
+
+        if channel == "whatsapp":
+            validate_phone_number(from_ or "")
+            has_media = bool(media_urls)
+            if not text and not has_media and not template:
+                raise SendlyError(
+                    message="Provide 'text', 'media_urls', or 'template'",
+                    code="invalid_request",
+                    status_code=400,
+                )
+
+            body: Dict[str, Any] = {
+                "channel": "whatsapp",
+                "to": to,
+                "from": from_,
+            }
+            if text is not None:
+                body["text"] = text
+            if has_media:
+                body["mediaUrls"] = media_urls
+            if template:
+                body["template"] = template
+            if metadata:
+                body["metadata"] = metadata
+
+            data = await self._http.request(
+                method="POST",
+                path="/messages",
+                body=body,
+            )
+
+            try:
+                return WhatsAppMessage(**data)
+            except PydanticValidationError as e:
+                raise SendlyError(
+                    message=f"Invalid API response format: {e}",
+                    code="invalid_response",
+                    status_code=200,
+                ) from e
+
+        validate_message_text(text or "")
         if from_:
             validate_sender_id(from_)
 
         # Build request body
-        body: Dict[str, Any] = {
+        body = {
             "to": to,
             "text": text,
         }

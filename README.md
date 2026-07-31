@@ -543,6 +543,69 @@ client.links.disable(link.code)
 client.links.enable(link.code)
 ```
 
+## WhatsApp
+
+Connect a number you own to WhatsApp ($19 one-time, no monthly fee), create
+Meta-reviewed message templates, and send on the `whatsapp` channel. Connecting
+always ends with a human step: hand the `connect_url` to your user - they open
+it in a browser and log in with Facebook to link their WhatsApp Business
+Account. Free-form text and media only deliver inside an open 24-hour window
+(the recipient messaged you in the last 24h); an approved template works
+anytime. Requires a live API key.
+
+```python
+# 1. Connect a number (a person must finish the connect URL in a browser)
+signup = client.whatsapp.signup.create('+15559876543')
+print(f'Open {signup.connect_url} and log in with Facebook')
+# ...poll client.whatsapp.signup.get(signup.id) until signup.status == 'active'
+# (or 'failed', with signup.failure_reasons explaining why)
+
+# 2. Create a template (Meta reviews it, usually 24-48h)
+template = client.whatsapp.templates.create(
+    sender='+15559876543',
+    name='order_shipped',
+    language='en_US',
+    category='UTILITY',
+    body='Hi {{1}}, your order {{2}} has shipped!',
+    examples={'1': 'Sam', '2': '#4821'},
+)
+# ...poll client.whatsapp.templates.list() until its status == 'APPROVED'
+# (a rejected template should be edited with templates.update() and resubmitted -
+# deleting locks its name for ~30 days)
+
+# 3. Send - free-form inside an open 24h window, template anytime
+window = client.whatsapp.window(from_='+15559876543', to='+15551234567')
+if window.open:
+    message = client.messages.send(
+        channel='whatsapp',
+        to='+15551234567',
+        from_='+15559876543',
+        text='Your table is ready!',
+    )
+else:
+    message = client.messages.send(
+        channel='whatsapp',
+        to='+15551234567',
+        from_='+15559876543',
+        template={'name': 'order_shipped', 'language': 'en_US',
+                  'variables': {'1': 'Sam', '2': '#4821'}},
+    )
+print(message.whatsapp.kind)  # 'text' or 'template'
+
+# Media with a caption (window-bound, one attachment per message)
+client.messages.send(
+    channel='whatsapp',
+    to='+15551234567',
+    from_='+15559876543',
+    text='Here is the menu',
+    media_urls=['https://example.com/menu.jpg'],
+)
+
+# List your connected senders
+for sender in client.whatsapp.senders.list().senders:
+    print(f'{sender.phone_number} ({sender.display_name}) - {sender.status}')
+```
+
 ## Error Handling
 
 The SDK provides typed exception classes:

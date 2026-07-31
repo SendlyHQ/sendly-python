@@ -55,6 +55,7 @@ from .resources.links import AsyncLinksResource, LinksResource
 from .resources.media import AsyncMediaResource, MediaResource
 from .resources.numbers import AsyncNumbersResource, NumbersResource
 from .resources.tendlc import AsyncTenDlcResource, TenDlcResource
+from .resources.whatsapp import AsyncWhatsAppResource, WhatsAppResource
 
 # Types
 from .types import (
@@ -151,6 +152,18 @@ from .types import (
     TenDlcQualifyResponse,
     TenDlcQualifyResult,
     TenDlcThroughput,
+    # WhatsApp types
+    WhatsAppMessage,
+    WhatsAppMessageDetails,
+    WhatsAppMessageTemplate,
+    WhatsAppSender,
+    WhatsAppSenderListResponse,
+    WhatsAppSignup,
+    WhatsAppSignupSession,
+    WhatsAppTemplate,
+    WhatsAppTemplateDeletedResponse,
+    WhatsAppTemplateListResponse,
+    WhatsAppWindow,
     OptInPage,
     PricingTier,
     QuotaSettings,
@@ -320,6 +333,18 @@ __all__ = [
     "TenDlcQualifyResponse",
     "TenDlcQualifyResult",
     "TenDlcThroughput",
+    # WhatsApp types
+    "WhatsAppMessage",
+    "WhatsAppMessageDetails",
+    "WhatsAppMessageTemplate",
+    "WhatsAppSender",
+    "WhatsAppSenderListResponse",
+    "WhatsAppSignup",
+    "WhatsAppSignupSession",
+    "WhatsAppTemplate",
+    "WhatsAppTemplateDeletedResponse",
+    "WhatsAppTemplateListResponse",
+    "WhatsAppWindow",
     # Links resources
     "LinksResource",
     "AsyncLinksResource",
@@ -335,6 +360,9 @@ __all__ = [
     # Business upgrade resources
     "BusinessUpgradeResource",
     "AsyncBusinessUpgradeResource",
+    # WhatsApp resources
+    "WhatsAppResource",
+    "AsyncWhatsAppResource",
     # Errors
     "SendlyError",
     "AuthenticationError",

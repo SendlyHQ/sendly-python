@@ -14,6 +14,7 @@ from .rules import AsyncRulesResource, RulesResource
 from .templates import AsyncTemplatesResource, TemplatesResource
 from .tendlc import AsyncTenDlcResource, TenDlcResource
 from .verify import AsyncVerifyResource, VerifyResource
+from .whatsapp import AsyncWhatsAppResource, WhatsAppResource
 
 __all__ = [
     "CampaignsResource",
@@ -44,4 +45,6 @@ __all__ = [
     "AsyncRulesResource",
     "TenDlcResource",
     "AsyncTenDlcResource",
+    "WhatsAppResource",
+    "AsyncWhatsAppResource",
 ]

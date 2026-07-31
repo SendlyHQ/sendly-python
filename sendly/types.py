@@ -2205,3 +2205,233 @@ class UpdateShortLinkResponse(BaseModel):
 
     code: str = Field(..., description="Short code identifying the link")
     disabled: bool = Field(..., description="Whether the link is now disabled")
+
+
+# ============================================================================
+# WhatsApp
+# ============================================================================
+
+
+class WhatsAppSignupSession(BaseModel):
+    """A newly started WhatsApp signup with its connect URL"""
+
+    id: str = Field(..., description="Unique signup identifier")
+    connect_url: str = Field(
+        ...,
+        alias="connectUrl",
+        description="Hosted connect page URL a person must open in a browser",
+    )
+    status: str = Field(
+        ...,
+        description="Signup status: initiated | registering | active | failed | expired",
+    )
+
+    model_config = ConfigDict(populate_by_name=True)
+
+
+class WhatsAppSignup(BaseModel):
+    """The status of a WhatsApp signup"""
+
+    id: str = Field(..., description="Unique signup identifier")
+    status: str = Field(
+        ...,
+        description="Signup status: initiated | registering | active | failed | expired",
+    )
+    phone_number: str = Field(
+        ..., alias="phoneNumber", description="The number being connected, in E.164 format"
+    )
+    business_account_id: Optional[str] = Field(
+        default=None,
+        alias="businessAccountId",
+        description=(
+            "The customer's WhatsApp Business Account id, once linked; "
+            "None before the human completes the connect step"
+        ),
+    )
+    failure_reasons: Optional[List[str]] = Field(
+        default=None,
+        alias="failureReasons",
+        description="Why the signup failed, when status is failed",
+    )
+    updated_at: str = Field(
+        ..., alias="updatedAt", description="When the status last changed (ISO 8601)"
+    )
+
+    model_config = ConfigDict(populate_by_name=True)
+
+
+class WhatsAppSender(BaseModel):
+    """A number connected (or connecting) to WhatsApp"""
+
+    phone_number: str = Field(
+        ..., alias="phoneNumber", description="The sender, in E.164 format"
+    )
+    display_name: Optional[str] = Field(
+        default=None,
+        alias="displayName",
+        description=(
+            "The name recipients see - chosen during the connect flow and "
+            "reviewed by Meta; None until set"
+        ),
+    )
+    status: str = Field(
+        ..., description="Connection status: pending | active | suspended"
+    )
+    quality_rating: Optional[str] = Field(
+        default=None,
+        alias="qualityRating",
+        description='Meta quality rating (e.g. "GREEN"), or None before first rating',
+    )
+    created_at: str = Field(
+        ..., alias="createdAt", description="When the sender was connected (ISO 8601)"
+    )
+
+    model_config = ConfigDict(populate_by_name=True)
+
+
+class WhatsAppSenderListResponse(BaseModel):
+    """Response from listing WhatsApp senders"""
+
+    senders: List[WhatsAppSender] = Field(
+        ..., description="Numbers connected (or connecting) to WhatsApp, newest first"
+    )
+
+
+class WhatsAppTemplate(BaseModel):
+    """A WhatsApp message template"""
+
+    id: str = Field(..., description="Unique template identifier")
+    name: str = Field(..., description="Template name")
+    language: str = Field(..., description='Template language code (e.g. "en_US")')
+    category: str = Field(
+        ...,
+        description=(
+            "Category (AUTHENTICATION | UTILITY | MARKETING); Meta may "
+            "reclassify - this value drives pricing"
+        ),
+    )
+    status: str = Field(
+        ...,
+        description="Review status: PENDING | APPROVED | REJECTED | PAUSED | DISABLED",
+    )
+    quality_rating: Optional[str] = Field(
+        default=None,
+        alias="qualityRating",
+        description='Meta quality rating (e.g. "GREEN"), or None before first rating',
+    )
+    rejection_reason: Optional[str] = Field(
+        default=None,
+        alias="rejectionReason",
+        description="Why Meta rejected the template, when status is REJECTED",
+    )
+    created_at: str = Field(
+        ..., alias="createdAt", description="When the template was created (ISO 8601)"
+    )
+    updated_at: str = Field(
+        ..., alias="updatedAt", description="When the template was last updated (ISO 8601)"
+    )
+    warnings: Optional[List[str]] = Field(
+        default=None,
+        description=(
+            "Non-blocking submission warnings (e.g. an unapproved display "
+            "name, or a marketing template without an opt-out button); "
+            "present on create responses when applicable"
+        ),
+    )
+
+    model_config = ConfigDict(populate_by_name=True)
+
+
+class WhatsAppTemplateListResponse(BaseModel):
+    """Response from listing WhatsApp templates"""
+
+    templates: List[WhatsAppTemplate] = Field(..., description="Your templates")
+
+
+class WhatsAppTemplateDeletedResponse(BaseModel):
+    """Response from deleting a WhatsApp template"""
+
+    id: str = Field(..., description="The deleted template's id")
+    deleted: bool = Field(..., description="Always True")
+
+
+class WhatsAppWindow(BaseModel):
+    """Whether a 24-hour customer-service window is open"""
+
+    open: bool = Field(
+        ..., description="True when a 24-hour customer-service window is currently open"
+    )
+    expires_at: Optional[str] = Field(
+        default=None,
+        alias="expiresAt",
+        description="When the window closes (ISO 8601), or None when no window is open",
+    )
+
+    model_config = ConfigDict(populate_by_name=True)
+
+
+class WhatsAppMessageTemplate(BaseModel):
+    """The template that was sent (template sends only)"""
+
+    name: str = Field(..., description="Template name")
+    language: str = Field(..., description="Template language code")
+    category: str = Field(
+        ...,
+        description=(
+            "Billed category (marketing | utility | authentication); Meta "
+            "may reclassify templates - this is what was billed"
+        ),
+    )
+
+
+class WhatsAppMessageDetails(BaseModel):
+    """WhatsApp-specific details on a sent message"""
+
+    kind: str = Field(
+        ..., description="What was sent: text | media | template"
+    )
+    template: Optional[WhatsAppMessageTemplate] = Field(
+        default=None, description="The template that was sent (template sends only)"
+    )
+    message_id: Optional[str] = Field(
+        default=None,
+        alias="messageId",
+        description=(
+            "WhatsApp message id - None until the first delivery report "
+            "lands; populated on the message record afterwards"
+        ),
+    )
+
+    model_config = ConfigDict(populate_by_name=True)
+
+
+class WhatsAppMessage(BaseModel):
+    """A sent WhatsApp message"""
+
+    id: str = Field(..., description="Unique message identifier")
+    channel: Literal["whatsapp"] = Field(..., description='Always "whatsapp"')
+    message_format: Literal["whatsapp"] = Field(..., description='Always "whatsapp"')
+    to: str = Field(..., description="Destination phone number")
+    from_: str = Field(..., alias="from", description="Sending number")
+    text: Optional[str] = Field(
+        default=None,
+        description="Body text for free-form text sends; None for template and media sends",
+    )
+    status: MessageStatus = Field(..., description="Current delivery status")
+    segments: int = Field(
+        default=1, description="Always 1 - WhatsApp has no segment concept"
+    )
+    credits_used: int = Field(
+        default=0,
+        alias="creditsUsed",
+        description="Credits charged (priced by destination country and category)",
+    )
+    whatsapp: WhatsAppMessageDetails = Field(..., description="WhatsApp-specific details")
+    created_at: str = Field(
+        ..., alias="createdAt", description="When the message was created (ISO 8601)"
+    )
+    metadata: Optional[Dict[str, Any]] = Field(
+        default=None, description="Custom JSON metadata attached to the message"
+    )
+
+    model_config = ConfigDict(populate_by_name=True)
