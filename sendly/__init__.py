@@ -54,6 +54,7 @@ from .resources.business_upgrade import (
 from .resources.links import AsyncLinksResource, LinksResource
 from .resources.media import AsyncMediaResource, MediaResource
 from .resources.numbers import AsyncNumbersResource, NumbersResource
+from .resources.rcs import AsyncRcsResource, RcsResource
 from .resources.tendlc import AsyncTenDlcResource, TenDlcResource
 from .resources.whatsapp import AsyncWhatsAppResource, WhatsAppResource
 
@@ -158,12 +159,19 @@ from .types import (
     WhatsAppMessageTemplate,
     WhatsAppSender,
     WhatsAppSenderListResponse,
+    WhatsAppSenderProfile,
     WhatsAppSignup,
     WhatsAppSignupSession,
     WhatsAppTemplate,
     WhatsAppTemplateDeletedResponse,
     WhatsAppTemplateListResponse,
     WhatsAppWindow,
+    # RCS types
+    RcsAgent,
+    RcsAgentListResponse,
+    RcsCapability,
+    RcsMessage,
+    RcsMessageDetails,
     OptInPage,
     PricingTier,
     QuotaSettings,
@@ -339,12 +347,19 @@ __all__ = [
     "WhatsAppMessageTemplate",
     "WhatsAppSender",
     "WhatsAppSenderListResponse",
+    "WhatsAppSenderProfile",
     "WhatsAppSignup",
     "WhatsAppSignupSession",
     "WhatsAppTemplate",
     "WhatsAppTemplateDeletedResponse",
     "WhatsAppTemplateListResponse",
     "WhatsAppWindow",
+    # RCS types
+    "RcsAgent",
+    "RcsAgentListResponse",
+    "RcsCapability",
+    "RcsMessage",
+    "RcsMessageDetails",
     # Links resources
     "LinksResource",
     "AsyncLinksResource",
@@ -363,6 +378,9 @@ __all__ = [
     # WhatsApp resources
     "WhatsAppResource",
     "AsyncWhatsAppResource",
+    # RCS resources
+    "RcsResource",
+    "AsyncRcsResource",
     # Errors
     "SendlyError",
     "AuthenticationError",

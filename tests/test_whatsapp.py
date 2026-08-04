@@ -13,6 +13,7 @@ from sendly.errors import NotFoundError, SendlyError, ValidationError
 from sendly.types import (
     WhatsAppMessage,
     WhatsAppSenderListResponse,
+    WhatsAppSenderProfile,
     WhatsAppSignup,
     WhatsAppSignupSession,
     WhatsAppTemplate,
@@ -51,6 +52,21 @@ def mock_sender():
         "status": "active",
         "qualityRating": "GREEN",
         "createdAt": "2026-07-30T10:00:00Z",
+    }
+
+
+@pytest.fixture
+def mock_sender_profile():
+    return {
+        "phoneNumber": "+15559876543",
+        "displayName": "Acme Coffee",
+        "profilePhotoUrl": None,
+        "category": "Restaurant",
+        "about": "Fresh roasts daily",
+        "description": None,
+        "email": None,
+        "website": "https://acme.example.com",
+        "address": None,
     }
 
 
@@ -245,6 +261,144 @@ class TestSendersList:
         result = client.whatsapp.senders.list()
 
         assert result.senders == []
+
+        client.close()
+
+
+class TestSendersProfile:
+    def test_get_profile(self, api_key, mock_sender_profile, httpx_mock: HTTPXMock):
+        client = Sendly(api_key)
+
+        httpx_mock.add_response(
+            url="https://sendly.live/api/v1/whatsapp/senders/%2B15559876543/profile",
+            method="GET",
+            json=mock_sender_profile,
+        )
+
+        result = client.whatsapp.senders.get_profile("+15559876543")
+
+        assert isinstance(result, WhatsAppSenderProfile)
+        assert result.phone_number == "+15559876543"
+        assert result.display_name == "Acme Coffee"
+        assert result.about == "Fresh roasts daily"
+        assert result.website == "https://acme.example.com"
+        assert result.description is None
+
+        client.close()
+
+    def test_get_profile_invalid_phone(self, api_key):
+        client = Sendly(api_key)
+
+        with pytest.raises(ValidationError, match="Invalid phone number format"):
+            client.whatsapp.senders.get_profile("15559876543")
+
+        client.close()
+
+    def test_get_profile_not_connected_404(
+        self, api_key, mock_error_response, httpx_mock: HTTPXMock
+    ):
+        client = Sendly(api_key, max_retries=0)
+
+        httpx_mock.add_response(
+            url="https://sendly.live/api/v1/whatsapp/senders/%2B15559876543/profile",
+            method="GET",
+            status_code=404,
+            json=mock_error_response(
+                "whatsapp_sender_not_connected",
+                "This number isn't connected to WhatsApp yet.",
+            ),
+        )
+
+        with pytest.raises(SendlyError) as exc_info:
+            client.whatsapp.senders.get_profile("+15559876543")
+
+        assert exc_info.value.code == "whatsapp_sender_not_connected"
+        assert exc_info.value.status_code == 404
+
+        client.close()
+
+    def test_update_profile(self, api_key, mock_sender_profile, httpx_mock: HTTPXMock):
+        client = Sendly(api_key)
+
+        httpx_mock.add_response(
+            url="https://sendly.live/api/v1/whatsapp/senders/%2B15559876543/profile",
+            method="PATCH",
+            json={**mock_sender_profile, "about": "New roasts weekly"},
+        )
+
+        result = client.whatsapp.senders.update_profile(
+            "+15559876543",
+            about="New roasts weekly",
+            website="https://acme.example.com",
+        )
+
+        assert result.about == "New roasts weekly"
+
+        payload = json.loads(httpx_mock.get_request().read().decode())
+        assert payload == {
+            "about": "New roasts weekly",
+            "website": "https://acme.example.com",
+        }
+
+        client.close()
+
+    def test_update_profile_requires_a_field(self, api_key):
+        client = Sendly(api_key)
+
+        with pytest.raises(ValidationError, match="at least one profile field"):
+            client.whatsapp.senders.update_profile("+15559876543")
+
+        client.close()
+
+    def test_update_profile_invalid_phone(self, api_key):
+        client = Sendly(api_key)
+
+        with pytest.raises(ValidationError, match="Invalid phone number format"):
+            client.whatsapp.senders.update_profile("15559876543", about="Hi")
+
+        client.close()
+
+    def test_update_profile_field_too_long_400(
+        self, api_key, mock_error_response, httpx_mock: HTTPXMock
+    ):
+        client = Sendly(api_key, max_retries=0)
+
+        httpx_mock.add_response(
+            url="https://sendly.live/api/v1/whatsapp/senders/%2B15559876543/profile",
+            method="PATCH",
+            status_code=400,
+            json=mock_error_response(
+                "invalid_request",
+                "Field 'about' must be at most 139 characters.",
+            ),
+        )
+
+        with pytest.raises(SendlyError) as exc_info:
+            client.whatsapp.senders.update_profile("+15559876543", about="x" * 140)
+
+        assert exc_info.value.code == "invalid_request"
+
+        client.close()
+
+    def test_update_profile_requires_live_key_403(
+        self, api_key, mock_error_response, httpx_mock: HTTPXMock
+    ):
+        client = Sendly(api_key, max_retries=0)
+
+        httpx_mock.add_response(
+            url="https://sendly.live/api/v1/whatsapp/senders/%2B15559876543/profile",
+            method="PATCH",
+            status_code=403,
+            json=mock_error_response(
+                "whatsapp_requires_live_key",
+                "WhatsApp requires a live API key. Test keys cannot update sender profiles.",
+            ),
+        )
+
+        with pytest.raises(SendlyError) as exc_info:
+            client.whatsapp.senders.update_profile("+15559876543", about="Hi")
+
+        assert exc_info.value.code == "whatsapp_requires_live_key"
 
         client.close()
 
@@ -783,6 +937,45 @@ class TestAsyncWhatsApp:
 
         assert isinstance(result, WhatsAppSenderListResponse)
         assert result.senders[0].display_name == "Acme Inc"
+
+        await client.close()
+
+    async def test_async_get_profile(
+        self, api_key, mock_sender_profile, httpx_mock: HTTPXMock
+    ):
+        client = AsyncSendly(api_key)
+
+        httpx_mock.add_response(
+            url="https://sendly.live/api/v1/whatsapp/senders/%2B15559876543/profile",
+            method="GET",
+            json=mock_sender_profile,
+        )
+
+        result = await client.whatsapp.senders.get_profile("+15559876543")
+
+        assert result.display_name == "Acme Coffee"
+
+        await client.close()
+
+    async def test_async_update_profile(
+        self, api_key, mock_sender_profile, httpx_mock: HTTPXMock
+    ):
+        client = AsyncSendly(api_key)
+
+        httpx_mock.add_response(
+            url="https://sendly.live/api/v1/whatsapp/senders/%2B15559876543/profile",
+            method="PATCH",
+            json={**mock_sender_profile, "about": "New roasts weekly"},
+        )
+
+        result = await client.whatsapp.senders.update_profile(
+            "+15559876543", about="New roasts weekly"
+        )
+
+        assert result.about == "New roasts weekly"
+
+        payload = json.loads(httpx_mock.get_request().read().decode())
+        assert payload == {"about": "New roasts weekly"}
 
         await client.close()
 

@@ -21,6 +21,8 @@ class MessageStatus(str, Enum):
     QUEUED = "queued"
     SENT = "sent"
     DELIVERED = "delivered"
+    # Read receipts exist on RCS and WhatsApp only - SMS never reports one.
+    READ = "read"
     FAILED = "failed"
     BOUNCED = "bounced"
     RETRYING = "retrying"
@@ -621,6 +623,7 @@ class WebhookEventType(str, Enum):
 
     MESSAGE_SENT = "message.sent"
     MESSAGE_DELIVERED = "message.delivered"
+    MESSAGE_READ = "message.read"
     MESSAGE_FAILED = "message.failed"
     MESSAGE_BOUNCED = "message.bounced"
     MESSAGE_RETRYING = "message.retrying"
@@ -2297,6 +2300,46 @@ class WhatsAppSenderListResponse(BaseModel):
     )
 
 
+class WhatsAppSenderProfile(BaseModel):
+    """A WhatsApp sender's business profile - what recipients see when they
+    open your business in WhatsApp"""
+
+    phone_number: str = Field(
+        ..., alias="phoneNumber", description="The sender, in E.164 format"
+    )
+    display_name: Optional[str] = Field(
+        default=None,
+        alias="displayName",
+        description="The business name recipients see; None until set",
+    )
+    profile_photo_url: Optional[str] = Field(
+        default=None,
+        alias="profilePhotoUrl",
+        description="Profile photo URL; None when none is set",
+    )
+    category: Optional[str] = Field(
+        default=None, description='Business category (e.g. "Restaurant"); None when unset'
+    )
+    about: Optional[str] = Field(
+        default=None, description="Short profile line (max 139 chars); None when unset"
+    )
+    description: Optional[str] = Field(
+        default=None,
+        description="Longer business description (max 512 chars); None when unset",
+    )
+    email: Optional[str] = Field(
+        default=None, description="Contact email shown on the profile; None when unset"
+    )
+    website: Optional[str] = Field(
+        default=None, description="Website shown on the profile; None when unset"
+    )
+    address: Optional[str] = Field(
+        default=None, description="Business address shown on the profile; None when unset"
+    )
+
+    model_config = ConfigDict(populate_by_name=True)
+
+
 class WhatsAppTemplate(BaseModel):
     """A WhatsApp message template"""
 
@@ -2427,6 +2470,174 @@ class WhatsAppMessage(BaseModel):
         description="Credits charged (priced by destination country and category)",
     )
     whatsapp: WhatsAppMessageDetails = Field(..., description="WhatsApp-specific details")
+    created_at: str = Field(
+        ..., alias="createdAt", description="When the message was created (ISO 8601)"
+    )
+    metadata: Optional[Dict[str, Any]] = Field(
+        default=None, description="Custom JSON metadata attached to the message"
+    )
+
+    model_config = ConfigDict(populate_by_name=True)
+
+
+# ============================================================================
+# RCS
+# ============================================================================
+
+
+class RcsAgent(BaseModel):
+    """An RCS agent - the verified sender identity recipients see"""
+
+    id: str = Field(..., description="Unique agent identifier - pass as agent_id on sends")
+    name: str = Field(..., description="The agent name recipients see")
+    status: str = Field(
+        ...,
+        description=(
+            "Lifecycle status: draft | submitted | testing | approved | "
+            "suspended. Only testing and approved agents can send"
+        ),
+    )
+    use_case: Optional[str] = Field(
+        default=None,
+        alias="useCase",
+        description="Declared messaging use case, or None when not set",
+    )
+    sendable: bool = Field(
+        ...,
+        description=(
+            "True when the agent can send right now (approved for sending "
+            "and fully provisioned)"
+        ),
+    )
+    created_at: str = Field(
+        ..., alias="createdAt", description="When the agent was registered (ISO 8601)"
+    )
+
+    model_config = ConfigDict(populate_by_name=True)
+
+
+class RcsAgentListResponse(BaseModel):
+    """Response from listing RCS agents"""
+
+    agents: List[RcsAgent] = Field(..., description="Your agents, newest first")
+
+
+class RcsCapability(BaseModel):
+    """Whether a recipient can receive RCS from one of your agents"""
+
+    to: str = Field(..., description="The recipient that was checked, in E.164 format")
+    agent_id: str = Field(
+        ..., alias="agentId", description="The agent the check ran as"
+    )
+    capable: bool = Field(
+        ..., description="True when the recipient can receive RCS from this agent"
+    )
+    features: List[str] = Field(
+        ...,
+        description="RCS features the recipient supports (empty when not capable)",
+    )
+
+    model_config = ConfigDict(populate_by_name=True)
+
+
+class RcsMessageDetails(BaseModel):
+    """RCS-specific details on a sent message.
+
+    The fields that are populated depend on which leg delivered. A native
+    RCS send carries ``kind`` and ``agent_name``; a send that fell back to
+    SMS carries ``requested_channel`` (always ``'rcs'``) and, when the
+    request had suggestion chips, ``suggestions_dropped``. ``agent_id`` is
+    present either way.
+    """
+
+    agent_id: str = Field(
+        ..., alias="agentId", description="The RCS agent the send was attempted as"
+    )
+    kind: Optional[str] = Field(
+        default=None,
+        description="What was sent: text | card. None on an SMS fallback",
+    )
+    agent_name: Optional[str] = Field(
+        default=None,
+        alias="agentName",
+        description="The agent name recipients see. None on an SMS fallback",
+    )
+    requested_channel: Optional[str] = Field(
+        default=None,
+        alias="requestedChannel",
+        description=(
+            'Always "rcs" on an SMS fallback - the channel the request asked '
+            "for. None on a native RCS send"
+        ),
+    )
+    suggestions_dropped: Optional[bool] = Field(
+        default=None,
+        alias="suggestionsDropped",
+        description=(
+            "True when the request carried suggestion chips and fell back to "
+            "SMS - chips have no SMS form and were dropped"
+        ),
+    )
+
+    model_config = ConfigDict(populate_by_name=True)
+
+
+class RcsMessage(BaseModel):
+    """A message sent on the RCS channel.
+
+    One type, two outcomes. Check ``channel`` (or ``fell_back_to``) to tell
+    which leg delivered:
+
+    - ``channel == 'rcs'``: delivered over RCS. ``rcs.kind`` says text or
+      card, ``rcs.agent_name`` is the sender recipients saw.
+    - ``channel == 'sms'``: the recipient's device or network doesn't
+      support RCS, so it was delivered as SMS and billed as SMS.
+      ``fell_back_to`` is ``'sms'`` and ``rcs.requested_channel`` is
+      ``'rcs'``.
+    """
+
+    id: str = Field(..., description="Unique message identifier")
+    channel: str = Field(
+        ...,
+        description=(
+            '"rcs" when the message went out over RCS; "sms" when it fell '
+            "back to SMS"
+        ),
+    )
+    fell_back_to: Optional[str] = Field(
+        default=None,
+        alias="fellBackTo",
+        description=(
+            'Always "sms" when the message fell back to SMS; None when it '
+            "went out over RCS"
+        ),
+    )
+    message_format: str = Field(
+        ..., description='"rcs" on a native send, "sms" on a fallback'
+    )
+    to: str = Field(..., description="Destination phone number")
+    from_: str = Field(
+        ...,
+        alias="from",
+        description=(
+            "The agent name on a native RCS send; the SMS sender (a number "
+            "or sender ID) on a fallback"
+        ),
+    )
+    text: Optional[str] = Field(
+        default=None, description="Body text for text sends; None for card sends"
+    )
+    status: MessageStatus = Field(..., description="Current delivery status")
+    segments: int = Field(
+        default=1,
+        description="Always 1 over RCS; the billed SMS segment count on a fallback",
+    )
+    credits_used: int = Field(
+        default=0,
+        alias="creditsUsed",
+        description="Credits charged (SMS pricing when the message fell back)",
+    )
+    rcs: RcsMessageDetails = Field(..., description="RCS-specific details")
     created_at: str = Field(
         ..., alias="createdAt", description="When the message was created (ISO 8601)"
     )

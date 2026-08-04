@@ -604,6 +604,80 @@ client.messages.send(
 # List your connected senders
 for sender in client.whatsapp.senders.list().senders:
     print(f'{sender.phone_number} ({sender.display_name}) - {sender.status}')
+
+# Read and update a sender's business profile (what recipients see)
+profile = client.whatsapp.senders.get_profile('+15559876543')
+print(profile.display_name, profile.about)
+
+client.whatsapp.senders.update_profile(
+    '+15559876543',
+    about='Fresh roasts daily',                                   # max 139 chars
+    description='Small-batch coffee, roasted in-house every morning.',  # max 512
+    website='https://acme.example.com',
+)
+```
+
+## RCS
+
+Send branded, verified-sender messages on Android: rich cards, suggestion
+chips, and read receipts. Sending as your brand requires an RCS agent (the
+verified identity recipients see), registered per workspace through carrier
+review - contact support to register one. Text messages automatically fall back
+to SMS when the recipient's device or network doesn't support RCS (billed as
+SMS; suggestion chips are dropped); rich cards have no SMS form and respond 422
+instead. Requires a live API key.
+
+```python
+# Your registered agents ('testing' or 'approved' agents are sendable)
+for agent in client.rcs.agents.list().agents:
+    print(agent.name, agent.status, agent.sendable)
+
+# Optionally pre-flight a recipient (live carrier-backed probe)
+check = client.rcs.capability(to='+15551234567')
+print(check.capable, check.features)
+
+# Text with suggestion chips - falls back to SMS for non-RCS recipients
+message = client.messages.send(
+    channel='rcs',
+    to='+15551234567',
+    text='Your table is ready!',
+    suggestions=[
+        {'reply': {'text': 'On my way', 'postbackData': 'omw'}},
+        {'action': {'text': 'View menu', 'postbackData': 'menu',
+                    'url': 'https://example.com/menu'}},
+    ],
+)
+
+# The response tells you which leg delivered
+if message.channel == 'rcs':
+    print(message.rcs.agent_name)          # delivered over RCS
+else:
+    print(message.fell_back_to)            # 'sms'
+    print(message.rcs.suggestions_dropped)  # True - chips have no SMS form
+
+# Rich card (RCS-capable recipients only - no SMS form)
+client.messages.send(
+    channel='rcs',
+    to='+15551234567',
+    card={
+        'title': 'Your order has shipped',
+        'description': 'Arriving Thursday',
+        'mediaUrl': 'https://example.com/package.jpg',  # public JPEG/PNG/GIF
+        'orientation': 'vertical',
+        'suggestions': [
+            {'action': {'text': 'Track it', 'postbackData': 'track',
+                        'url': 'https://example.com/track'}},
+        ],
+    },
+)
+
+# Opt out of the SMS fallback to get a 422 for non-RCS recipients instead
+client.messages.send(
+    channel='rcs',
+    to='+15551234567',
+    text='Your table is ready!',
+    fallback_to_sms=False,
+)
 ```
 
 ## Error Handling

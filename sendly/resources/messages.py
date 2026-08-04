@@ -19,6 +19,7 @@ from ..types import (
     ListMessagesOptions,
     Message,
     MessageListResponse,
+    RcsMessage,
     ScheduledMessage,
     ScheduledMessageListResponse,
     SendMessageRequest,
@@ -58,10 +59,14 @@ class MessagesResource:
         media_urls: Optional[List[str]] = None,
         channel: Optional[str] = None,
         template: Optional[Dict[str, Any]] = None,
+        agent_id: Optional[str] = None,
+        card: Optional[Dict[str, Any]] = None,
+        suggestions: Optional[List[Dict[str, Any]]] = None,
+        fallback_to_sms: Optional[bool] = None,
         **kwargs: Any,
-    ) -> Union[Message, WhatsAppMessage]:
+    ) -> Union[Message, WhatsAppMessage, RcsMessage]:
         """
-        Send an SMS or WhatsApp message
+        Send an SMS, WhatsApp, or RCS message
 
         Pass ``channel='whatsapp'`` to send on WhatsApp. WhatsApp sends
         require a live API key and a ``from_`` number with an active WhatsApp
@@ -70,25 +75,55 @@ class MessagesResource:
         outside it, send an approved ``template`` instead (check with
         ``client.whatsapp.window()``).
 
+        Pass ``channel='rcs'`` to send on RCS. RCS sends require a live API
+        key and a sendable RCS agent on your workspace (see
+        ``client.rcs.agents``). Provide exactly one of ``text`` (optionally
+        with ``suggestions`` chips) or ``card``. When the recipient doesn't
+        support RCS, text sends fall back to SMS automatically - check
+        ``message.channel`` (or ``message.fell_back_to``) on the response to
+        tell which leg delivered. Rich cards have no SMS form and respond
+        422 instead.
+
         Args:
             to: Destination phone number in E.164 format (e.g., +15551234567)
             text: Message content. On WhatsApp: free-form text (max 4096
                 bytes), or the caption when media_urls is provided (max 1024
-                bytes); requires an open 24-hour window
+                bytes); requires an open 24-hour window. On RCS: the message
+                body - provide this or card, never both
             from_: Optional sender ID or phone number. Required on WhatsApp -
-                must be a number with an active WhatsApp connection
+                must be a number with an active WhatsApp connection. Ignored
+                on RCS (the agent is the sender)
             message_type: Message type for compliance - 'marketing' (default, subject to quiet hours) or 'transactional' (24/7)
             metadata: Custom JSON metadata to attach to the message (max 4KB)
             media_urls: URLs of media files to attach. WhatsApp accepts
                 exactly one per message
-            channel: Omit (or 'sms') for SMS; 'whatsapp' to send on WhatsApp
+            channel: Omit (or 'sms') for SMS; 'whatsapp' to send on WhatsApp;
+                'rcs' to send on RCS
             template: Approved WhatsApp template to send, works regardless of
                 the 24-hour window: {'name': 'order_shipped', 'language':
                 'en_US', 'variables': {'1': 'Acme Inc', '2': '#4821'}}
                 (optional 'buttons' for dynamic-URL button variables)
+            agent_id: RCS only - the agent to send as. Optional when your
+                workspace has exactly one agent; required when it has several
+            card: RCS only - a rich card:
+                {'title': 'Your order shipped', 'description': 'Arriving
+                Thursday', 'mediaUrl': 'https://example.com/box.jpg',
+                'orientation': 'vertical', 'suggestions': [...]}.
+                ``title`` and ``description`` are both required. Provide this
+                or text, never both
+            suggestions: RCS only - suggestion chips for a text message:
+                [{'reply': {'text': 'On my way', 'postbackData': 'omw'}},
+                {'action': {'text': 'Track it', 'postbackData': 'track',
+                'url': 'https://example.com/track'}}]. Card buttons go in
+                card['suggestions'] instead. Dropped (and disclosed via
+                message.rcs.suggestions_dropped) when the send falls back
+            fallback_to_sms: RCS only - deliver as SMS when the recipient
+                doesn't support RCS (default True). Pass False to get a 422
+                rcs_not_supported_for_recipient instead
 
         Returns:
-            The created message (a WhatsAppMessage when channel='whatsapp')
+            The created message (a WhatsAppMessage when channel='whatsapp',
+            an RcsMessage when channel='rcs')
 
         Raises:
             ValidationError: If the request is invalid
@@ -116,9 +151,41 @@ class MessagesResource:
             ...     },
             ... )
             >>> print(message.whatsapp.kind)  # 'template'
+
+        RCS example:
+            >>> message = client.messages.send(
+            ...     channel='rcs',
+            ...     to='+15551234567',
+            ...     text='Your table is ready!',
+            ...     suggestions=[
+            ...         {'reply': {'text': 'On my way', 'postbackData': 'omw'}},
+            ...     ],
+            ... )
+            >>> if message.channel == 'rcs':
+            ...     print(message.rcs.agent_name)  # delivered over RCS
+            ... else:
+            ...     print(message.fell_back_to)    # 'sms'
         """
         # Validate inputs
         validate_phone_number(to)
+
+        if channel == "rcs":
+            data = self._http.request(
+                method="POST",
+                path="/messages",
+                body=_rcs_send_body(
+                    to, text, agent_id, card, suggestions, fallback_to_sms, metadata
+                ),
+            )
+
+            try:
+                return RcsMessage(**data)
+            except PydanticValidationError as e:
+                raise SendlyError(
+                    message=f"Invalid API response format: {e}",
+                    code="invalid_response",
+                    status_code=200,
+                ) from e
 
         if channel == "whatsapp":
             validate_phone_number(from_ or "")
@@ -868,29 +935,42 @@ class AsyncMessagesResource:
         media_urls: Optional[List[str]] = None,
         channel: Optional[str] = None,
         template: Optional[Dict[str, Any]] = None,
+        agent_id: Optional[str] = None,
+        card: Optional[Dict[str, Any]] = None,
+        suggestions: Optional[List[Dict[str, Any]]] = None,
+        fallback_to_sms: Optional[bool] = None,
         **kwargs: Any,
-    ) -> Union[Message, WhatsAppMessage]:
+    ) -> Union[Message, WhatsAppMessage, RcsMessage]:
         """
-        Send an SMS or WhatsApp message (async)
+        Send an SMS, WhatsApp, or RCS message (async)
 
-        Pass ``channel='whatsapp'`` to send on WhatsApp. See
-        :meth:`MessagesResource.send` for the full parameter reference.
+        Pass ``channel='whatsapp'`` to send on WhatsApp, or ``channel='rcs'``
+        to send on RCS. See :meth:`MessagesResource.send` for the full
+        parameter reference.
 
         Args:
             to: Destination phone number in E.164 format
             text: Message content. On WhatsApp, free-form text or the media
-                caption; requires an open 24-hour window
+                caption; requires an open 24-hour window. On RCS, the message
+                body - provide this or card, never both
             from_: Optional sender ID or phone number. Required on WhatsApp
             message_type: Message type for compliance - 'marketing' (default, subject to quiet hours) or 'transactional' (24/7)
             metadata: Custom JSON metadata to attach to the message (max 4KB)
             media_urls: URLs of media files to attach. WhatsApp accepts
                 exactly one per message
-            channel: Omit (or 'sms') for SMS; 'whatsapp' to send on WhatsApp
+            channel: Omit (or 'sms') for SMS; 'whatsapp' to send on WhatsApp;
+                'rcs' to send on RCS
             template: Approved WhatsApp template to send, works regardless of
                 the 24-hour window
+            agent_id: RCS only - the agent to send as
+            card: RCS only - a rich card (title and description required)
+            suggestions: RCS only - suggestion chips for a text message
+            fallback_to_sms: RCS only - deliver as SMS when the recipient
+                doesn't support RCS (default True)
 
         Returns:
-            The created message (a WhatsAppMessage when channel='whatsapp')
+            The created message (a WhatsAppMessage when channel='whatsapp',
+            an RcsMessage when channel='rcs')
 
         Example:
             >>> message = await client.messages.send(
@@ -900,6 +980,24 @@ class AsyncMessagesResource:
         """
         # Validate inputs
         validate_phone_number(to)
+
+        if channel == "rcs":
+            data = await self._http.request(
+                method="POST",
+                path="/messages",
+                body=_rcs_send_body(
+                    to, text, agent_id, card, suggestions, fallback_to_sms, metadata
+                ),
+            )
+
+            try:
+                return RcsMessage(**data)
+            except PydanticValidationError as e:
+                raise SendlyError(
+                    message=f"Invalid API response format: {e}",
+                    code="invalid_response",
+                    status_code=200,
+                ) from e
 
         if channel == "whatsapp":
             validate_phone_number(from_ or "")
@@ -1509,3 +1607,37 @@ class AsyncMessagesResource:
                 code="invalid_response",
                 status_code=200,
             ) from e
+
+
+def _rcs_send_body(
+    to: str,
+    text: Optional[str],
+    agent_id: Optional[str],
+    card: Optional[Dict[str, Any]],
+    suggestions: Optional[List[Dict[str, Any]]],
+    fallback_to_sms: Optional[bool],
+    metadata: Optional[Dict[str, Any]],
+) -> Dict[str, Any]:
+    has_text = bool(text)
+    has_card = bool(card)
+    if has_text == has_card:
+        raise SendlyError(
+            message="Provide exactly one of 'text' or 'card'",
+            code="invalid_request",
+            status_code=400,
+        )
+
+    body: Dict[str, Any] = {"channel": "rcs", "to": to}
+    if agent_id:
+        body["agentId"] = agent_id
+    if has_text:
+        body["text"] = text
+    if has_card:
+        body["card"] = card
+    if suggestions:
+        body["suggestions"] = suggestions
+    if fallback_to_sms is not None:
+        body["fallbackToSms"] = fallback_to_sms
+    if metadata:
+        body["metadata"] = metadata
+    return body

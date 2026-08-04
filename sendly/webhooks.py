@@ -39,6 +39,7 @@ WebhookEventType = Literal[
     "message.queued",
     "message.sent",
     "message.delivered",
+    "message.read",
     "message.failed",
     "message.bounced",
     "message.retrying",

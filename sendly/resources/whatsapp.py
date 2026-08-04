@@ -29,6 +29,7 @@ from pydantic import ValidationError as PydanticValidationError
 from ..errors import SendlyError, ValidationError
 from ..types import (
     WhatsAppSenderListResponse,
+    WhatsAppSenderProfile,
     WhatsAppSignup,
     WhatsAppSignupSession,
     WhatsAppTemplate,
@@ -91,7 +92,8 @@ class WhatsAppSignupResource:
 
 
 class WhatsAppSendersResource:
-    """Senders sub-resource for listing WhatsApp-connected numbers (sync)"""
+    """Senders sub-resource for WhatsApp-connected numbers and their
+    business profiles (sync)"""
 
     def __init__(self, http: HttpClient):
         self._http = http
@@ -106,6 +108,79 @@ class WhatsAppSendersResource:
         data = self._http.request(method="GET", path="/whatsapp/senders")
         try:
             return WhatsAppSenderListResponse(**data)
+        except PydanticValidationError as e:
+            raise _invalid_response(e) from e
+
+    def get_profile(self, phone_number: str) -> WhatsAppSenderProfile:
+        """Get a sender's business profile.
+
+        Returns what recipients see when they open your business in
+        WhatsApp. The number must have an active WhatsApp connection.
+
+        Args:
+            phone_number: Your WhatsApp-connected sending number, in E.164
+                format.
+
+        Example:
+            >>> profile = client.whatsapp.senders.get_profile('+15559876543')
+            >>> print(profile.display_name, profile.about)
+        """
+        validate_phone_number(phone_number)
+        data = self._http.request(
+            method="GET",
+            path=f"/whatsapp/senders/{quote(phone_number, safe='')}/profile",
+        )
+        try:
+            return WhatsAppSenderProfile(**data)
+        except PydanticValidationError as e:
+            raise _invalid_response(e) from e
+
+    def update_profile(
+        self,
+        phone_number: str,
+        *,
+        display_name: Optional[str] = None,
+        about: Optional[str] = None,
+        description: Optional[str] = None,
+        category: Optional[str] = None,
+        email: Optional[str] = None,
+        website: Optional[str] = None,
+        address: Optional[str] = None,
+    ) -> WhatsAppSenderProfile:
+        """Update a sender's business profile.
+
+        Supply only the fields to change - omitted fields keep their current
+        value. Requires a live API key.
+
+        Args:
+            phone_number: Your WhatsApp-connected sending number, in E.164
+                format.
+            display_name: The business name recipients see.
+            about: Short profile line (max 139 characters).
+            description: Longer business description (max 512 characters).
+            category: Business category (e.g. ``'Restaurant'``).
+            email: Contact email shown on the profile.
+            website: Website shown on the profile.
+            address: Business address shown on the profile.
+
+        Example:
+            >>> client.whatsapp.senders.update_profile(
+            ...     '+15559876543',
+            ...     about='Fresh roasts daily',
+            ...     website='https://acme.example.com',
+            ... )
+        """
+        validate_phone_number(phone_number)
+        payload = _profile_body(
+            display_name, about, description, category, email, website, address
+        )
+        data = self._http.request(
+            method="PATCH",
+            path=f"/whatsapp/senders/{quote(phone_number, safe='')}/profile",
+            body=payload,
+        )
+        try:
+            return WhatsAppSenderProfile(**data)
         except PydanticValidationError as e:
             raise _invalid_response(e) from e
 
@@ -316,7 +391,8 @@ class AsyncWhatsAppSignupResource:
 
 
 class AsyncWhatsAppSendersResource:
-    """Senders sub-resource for listing WhatsApp-connected numbers (async)"""
+    """Senders sub-resource for WhatsApp-connected numbers and their
+    business profiles (async)"""
 
     def __init__(self, http: AsyncHttpClient):
         self._http = http
@@ -326,6 +402,47 @@ class AsyncWhatsAppSendersResource:
         data = await self._http.request(method="GET", path="/whatsapp/senders")
         try:
             return WhatsAppSenderListResponse(**data)
+        except PydanticValidationError as e:
+            raise _invalid_response(e) from e
+
+    async def get_profile(self, phone_number: str) -> WhatsAppSenderProfile:
+        """Get a sender's business profile.
+        See :meth:`WhatsAppSendersResource.get_profile`."""
+        validate_phone_number(phone_number)
+        data = await self._http.request(
+            method="GET",
+            path=f"/whatsapp/senders/{quote(phone_number, safe='')}/profile",
+        )
+        try:
+            return WhatsAppSenderProfile(**data)
+        except PydanticValidationError as e:
+            raise _invalid_response(e) from e
+
+    async def update_profile(
+        self,
+        phone_number: str,
+        *,
+        display_name: Optional[str] = None,
+        about: Optional[str] = None,
+        description: Optional[str] = None,
+        category: Optional[str] = None,
+        email: Optional[str] = None,
+        website: Optional[str] = None,
+        address: Optional[str] = None,
+    ) -> WhatsAppSenderProfile:
+        """Update a sender's business profile.
+        See :meth:`WhatsAppSendersResource.update_profile`."""
+        validate_phone_number(phone_number)
+        payload = _profile_body(
+            display_name, about, description, category, email, website, address
+        )
+        data = await self._http.request(
+            method="PATCH",
+            path=f"/whatsapp/senders/{quote(phone_number, safe='')}/profile",
+            body=payload,
+        )
+        try:
+            return WhatsAppSenderProfile(**data)
         except PydanticValidationError as e:
             raise _invalid_response(e) from e
 
@@ -459,6 +576,33 @@ def _create_template_body(
     for key, value in optional.items():
         if value is not None:
             payload[key] = value
+    return payload
+
+
+def _profile_body(
+    display_name: Optional[str],
+    about: Optional[str],
+    description: Optional[str],
+    category: Optional[str],
+    email: Optional[str],
+    website: Optional[str],
+    address: Optional[str],
+) -> Dict[str, Any]:
+    payload: Dict[str, Any] = {}
+    optional: Dict[str, Any] = {
+        "displayName": display_name,
+        "about": about,
+        "description": description,
+        "category": category,
+        "email": email,
+        "website": website,
+        "address": address,
+    }
+    for key, value in optional.items():
+        if value is not None:
+            payload[key] = value
+    if not payload:
+        raise ValidationError("Provide at least one profile field to update")
     return payload
 
 

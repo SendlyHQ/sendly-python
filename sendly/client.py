@@ -21,6 +21,7 @@ from .resources.links import AsyncLinksResource, LinksResource
 from .resources.media import AsyncMediaResource, MediaResource
 from .resources.messages import AsyncMessagesResource, MessagesResource
 from .resources.numbers import AsyncNumbersResource, NumbersResource
+from .resources.rcs import AsyncRcsResource, RcsResource
 from .resources.rules import AsyncRulesResource, RulesResource
 from .resources.templates import AsyncTemplatesResource, TemplatesResource
 from .resources.tendlc import AsyncTenDlcResource, TenDlcResource
@@ -130,6 +131,7 @@ class Sendly:
         self.rules = RulesResource(self._http)
         self.business_upgrade = BusinessUpgradeResource(self._http)
         self.whatsapp = WhatsAppResource(self._http)
+        self.rcs = RcsResource(self._http)
 
     def __enter__(self) -> "Sendly":
         return self
@@ -272,6 +274,7 @@ class AsyncSendly:
         self.rules = AsyncRulesResource(self._http)
         self.business_upgrade = AsyncBusinessUpgradeResource(self._http)
         self.whatsapp = AsyncWhatsAppResource(self._http)
+        self.rcs = AsyncRcsResource(self._http)
 
     async def __aenter__(self) -> "AsyncSendly":
         return self
