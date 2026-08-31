@@ -290,6 +290,8 @@ def _multipart_request_sync(
     request = _build_multipart_request(
         client, path, http.api_key, http.organization_id, data, files
     )
+    # Single-use auto key (no retry loop on this path).
+    request.headers["Idempotency-Key"] = http._generate_idempotency_key()
     response = client.send(request)
     http._update_rate_limit_info(response.headers)
     parsed = http._parse_response(response)
@@ -307,6 +309,8 @@ async def _multipart_request_async(
     request = _build_multipart_request(
         client, path, http.api_key, http.organization_id, data, files
     )
+    # Single-use auto key (no retry loop on this path).
+    request.headers["Idempotency-Key"] = http._generate_idempotency_key()
     response = await client.send(request)
     http._update_rate_limit_info(response.headers)
     parsed = http._parse_response(response)

@@ -9,6 +9,7 @@ import os
 import random
 import re
 import time
+import uuid
 from typing import Any, Dict, Optional, TypeVar, Union
 
 import httpx
@@ -18,6 +19,7 @@ from ..errors import (
     RateLimitError,
     SendlyError,
     TimeoutError,
+    ValidationError,
 )
 from ..types import RateLimitInfo
 
@@ -118,14 +120,55 @@ class HttpClient:
         jitter = random.uniform(0, 0.5)
         return min(base_delay + jitter, 30.0)
 
+    def _generate_idempotency_key(self) -> str:
+        """
+        Generate an idempotency key for a logical request
+
+        Reused across retry attempts so the server can recognize a retry of
+        a timed-out POST that actually reached it.
+        """
+        return f"sendly-python-retry-{uuid.uuid4()}"
+
+    def _normalize_idempotency_key(self, key: Optional[str]) -> Optional[str]:
+        """
+        Validate and normalize a caller-supplied idempotency key
+
+        Empty and whitespace-only values are treated as absent
+        (auto-generation still applies); invalid values fail fast before
+        any network call.
+        """
+        if key is None:
+            return None
+        trimmed = key.strip()
+        if not trimmed:
+            return None
+        if len(trimmed) > 255 or not re.match(r"^[\x20-\x7E]+$", trimmed):
+            raise ValidationError("Idempotency key must be 1-255 printable ASCII characters")
+        return trimmed
+
+    def _is_server_error_response(self, error: SendlyError) -> bool:
+        """
+        Check if the error carries an actual 5xx response from the server,
+        as opposed to a timeout or network failure where the outcome of the
+        request is unknown
+        """
+        return error.status_code is not None and error.status_code >= 500
+
     def request(
         self,
         method: str,
         path: str,
         body: Optional[Dict[str, Any]] = None,
         params: Optional[Dict[str, Any]] = None,
+        idempotency_key: Optional[str] = None,
+        auto_idempotency_key: bool = True,
     ) -> Any:
         """Make an HTTP request to the API"""
+        explicit_key = self._normalize_idempotency_key(idempotency_key)
+        key = explicit_key
+        if key is None and method == "POST" and auto_idempotency_key:
+            key = self._generate_idempotency_key()
+
         last_error: Optional[Exception] = None
 
         for attempt in range(self.max_retries + 1):
@@ -135,6 +178,7 @@ class HttpClient:
                     url=path,
                     json=body,
                     params=params,
+                    headers={"Idempotency-Key": key} if key else None,
                 )
 
                 # Update rate limit info
@@ -157,6 +201,12 @@ class HttpClient:
                         time.sleep(e.retry_after)
                         continue
                     raise
+
+                # A 5xx response may be cached by the server under the key,
+                # so rotate an auto-generated key to let the retry
+                # re-execute. Caller-supplied keys are never rotated.
+                if explicit_key is None and key is not None and self._is_server_error_response(e):
+                    key = self._generate_idempotency_key()
 
             except httpx.TimeoutException as e:
                 last_error = TimeoutError(f"Request timed out after {self.timeout}s")
@@ -288,14 +338,55 @@ class AsyncHttpClient:
         jitter = random.uniform(0, 0.5)
         return min(base_delay + jitter, 30.0)
 
+    def _generate_idempotency_key(self) -> str:
+        """
+        Generate an idempotency key for a logical request
+
+        Reused across retry attempts so the server can recognize a retry of
+        a timed-out POST that actually reached it.
+        """
+        return f"sendly-python-retry-{uuid.uuid4()}"
+
+    def _normalize_idempotency_key(self, key: Optional[str]) -> Optional[str]:
+        """
+        Validate and normalize a caller-supplied idempotency key
+
+        Empty and whitespace-only values are treated as absent
+        (auto-generation still applies); invalid values fail fast before
+        any network call.
+        """
+        if key is None:
+            return None
+        trimmed = key.strip()
+        if not trimmed:
+            return None
+        if len(trimmed) > 255 or not re.match(r"^[\x20-\x7E]+$", trimmed):
+            raise ValidationError("Idempotency key must be 1-255 printable ASCII characters")
+        return trimmed
+
+    def _is_server_error_response(self, error: SendlyError) -> bool:
+        """
+        Check if the error carries an actual 5xx response from the server,
+        as opposed to a timeout or network failure where the outcome of the
+        request is unknown
+        """
+        return error.status_code is not None and error.status_code >= 500
+
     async def request(
         self,
         method: str,
         path: str,
         body: Optional[Dict[str, Any]] = None,
         params: Optional[Dict[str, Any]] = None,
+        idempotency_key: Optional[str] = None,
+        auto_idempotency_key: bool = True,
     ) -> Any:
         """Make an async HTTP request to the API"""
+        explicit_key = self._normalize_idempotency_key(idempotency_key)
+        key = explicit_key
+        if key is None and method == "POST" and auto_idempotency_key:
+            key = self._generate_idempotency_key()
+
         last_error: Optional[Exception] = None
 
         for attempt in range(self.max_retries + 1):
@@ -305,6 +396,7 @@ class AsyncHttpClient:
                     url=path,
                     json=body,
                     params=params,
+                    headers={"Idempotency-Key": key} if key else None,
                 )
 
                 # Update rate limit info
@@ -327,6 +419,12 @@ class AsyncHttpClient:
                         await asyncio.sleep(e.retry_after)
                         continue
                     raise
+
+                # A 5xx response may be cached by the server under the key,
+                # so rotate an auto-generated key to let the retry
+                # re-execute. Caller-supplied keys are never rotated.
+                if explicit_key is None and key is not None and self._is_server_error_response(e):
+                    key = self._generate_idempotency_key()
 
             except httpx.TimeoutException as e:
                 last_error = TimeoutError(f"Request timed out after {self.timeout}s")

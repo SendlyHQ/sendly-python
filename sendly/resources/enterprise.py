@@ -607,6 +607,7 @@ class EnterpriseResource:
             }
             if self._http.organization_id:
                 headers["X-Organization-Id"] = self._http.organization_id
+            headers["Idempotency-Key"] = self._http._generate_idempotency_key()
 
             url = f"{self._http.base_url}/enterprise/verification-document/upload"
             import httpx
@@ -1158,6 +1159,7 @@ class AsyncEnterpriseResource:
         }
         if self._http.organization_id:
             headers["X-Organization-Id"] = self._http.organization_id
+        headers["Idempotency-Key"] = self._http._generate_idempotency_key()
 
         url = f"{self._http.base_url}/enterprise/verification-document/upload"
         import httpx

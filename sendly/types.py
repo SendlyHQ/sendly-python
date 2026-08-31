@@ -8,7 +8,7 @@ from datetime import datetime
 from enum import Enum
 from typing import Any, Dict, List, Literal, Optional
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import AliasChoices, BaseModel, ConfigDict, Field
 
 # ============================================================================
 # Enums
@@ -131,12 +131,89 @@ class Message(BaseModel):
     text: str = Field(..., description="Message content")
     status: MessageStatus = Field(..., description="Delivery status")
     direction: Literal["outbound", "inbound"] = Field(
-        default="outbound", description="Message direction"
+        default="outbound",
+        description=(
+            "Message direction, or 'outbound' when the response does not report one. "
+            "Only the conversation thread (GET /conversations/{id}?include_messages=true) "
+            "reports it. Sending, GET /messages and GET /messages/{id} all omit it, and "
+            "the list endpoint does return inbound messages, so an inbound message read "
+            "from it appears as 'outbound' here. Use reported_direction to tell a real "
+            "direction from an unreported one."
+        ),
+    )
+    reported_direction: Optional[Literal["outbound", "inbound"]] = Field(
+        default=None,
+        validation_alias=AliasChoices("direction"),
+        exclude=True,
+        description=(
+            "Direction as the response actually reported it, or None when it carried no "
+            "direction. None does not mean outbound."
+        ),
     )
     error: Optional[str] = Field(default=None, description="Error message if failed")
-    segments: int = Field(default=1, description="Number of SMS segments")
-    credits_used: int = Field(default=0, alias="creditsUsed", description="Credits charged")
-    is_sandbox: bool = Field(default=False, alias="isSandbox", description="Sandbox mode flag")
+    segments: int = Field(
+        default=1,
+        description=(
+            "Number of SMS segments, or 1 when the response does not report a count. "
+            "A simulated send (test key or sandbox destination) reports no segment "
+            "count, so this reads 1 for a message that was never segmented and summing "
+            "it across simulated sends over-counts. A live send, GET /messages, "
+            "GET /messages/{id} and the conversation thread all report it. Use "
+            "reported_segments to tell a real count from an unreported one."
+        ),
+    )
+    reported_segments: Optional[int] = Field(
+        default=None,
+        validation_alias=AliasChoices("segments"),
+        exclude=True,
+        description=(
+            "Segment count as the response actually reported it, or None when it carried "
+            "no count. Sum this instead of segments to keep unsegmented simulated sends "
+            "out of the total."
+        ),
+    )
+    credits_used: int = Field(
+        default=0,
+        alias="creditsUsed",
+        description=(
+            "Credits charged, or 0 when the response does not report a charge. "
+            "A simulated send (test key or sandbox destination) reports no charge, so "
+            "this reads 0 and cannot be told apart from a genuinely free message. "
+            "A live send, GET /messages, GET /messages/{id} and the conversation thread "
+            "all report it. Use reported_credits_used to tell a real 0 from an "
+            "unreported one."
+        ),
+    )
+    reported_credits_used: Optional[int] = Field(
+        default=None,
+        validation_alias=AliasChoices("creditsUsed", "credits_used"),
+        exclude=True,
+        description=(
+            "Credits charged as the response actually reported it, or None when it "
+            "carried no charge. Sum this instead of credits_used to keep uncharged "
+            "simulated sends out of the total."
+        ),
+    )
+    is_sandbox: bool = Field(
+        default=False,
+        alias="isSandbox",
+        description=(
+            "Sandbox mode flag, or False when the response does not report one. No send "
+            "response carries it, simulated or live, so a test-key send reads False here "
+            "even though the message was a sandbox message. GET /messages, "
+            "GET /messages/{id} and the conversation thread report it. Use "
+            "reported_is_sandbox to tell a real False from an unreported one."
+        ),
+    )
+    reported_is_sandbox: Optional[bool] = Field(
+        default=None,
+        validation_alias=AliasChoices("isSandbox", "is_sandbox"),
+        exclude=True,
+        description=(
+            "Sandbox flag as the response actually reported it, or None when it carried "
+            "no flag. None does not mean the message was live."
+        ),
+    )
     sender_type: Optional[SenderType] = Field(
         default=None, alias="senderType", description="How the message was sent"
     )
@@ -159,7 +236,23 @@ class Message(BaseModel):
         default=None, alias="errorCode", description="Error code if delivery failed"
     )
     retry_count: int = Field(
-        default=0, alias="retryCount", description="Number of delivery retry attempts"
+        default=0,
+        alias="retryCount",
+        description=(
+            "Number of delivery retry attempts, or 0 when the response does not report "
+            "a count. No send response carries it, simulated or live. GET /messages, "
+            "GET /messages/{id} and the conversation thread report it. Use "
+            "reported_retry_count to tell a real 0 from an unreported one."
+        ),
+    )
+    reported_retry_count: Optional[int] = Field(
+        default=None,
+        validation_alias=AliasChoices("retryCount", "retry_count"),
+        exclude=True,
+        description=(
+            "Retry count as the response actually reported it, or None when it carried "
+            "no count."
+        ),
     )
     metadata: Optional[Dict[str, Any]] = Field(
         default=None, description="Custom metadata attached to the message"
@@ -311,7 +404,14 @@ class CancelledMessageResponse(BaseModel):
     id: str = Field(..., description="Message ID")
     status: Literal["cancelled"] = Field(..., description="Status (always cancelled)")
     credits_refunded: int = Field(..., alias="creditsRefunded", description="Credits refunded")
-    cancelled_at: str = Field(..., alias="cancelledAt", description="Cancellation timestamp")
+    cancelled_at: Optional[str] = Field(
+        default=None,
+        alias="cancelledAt",
+        description=(
+            "Cancellation timestamp. Always None from the API - the cancel endpoint "
+            "does not return this field"
+        ),
+    )
 
     model_config = ConfigDict(populate_by_name=True)
 
@@ -382,15 +482,63 @@ class BatchMessageResult(BaseModel):
 class BatchMessageResponse(BaseModel):
     """Response from sending batch messages"""
 
-    batch_id: str = Field(..., alias="batchId", description="Unique batch identifier")
+    batch_id: str = Field(
+        ...,
+        alias="batchId",
+        validation_alias=AliasChoices("batchId", "id"),
+        serialization_alias="batchId",
+        description="Unique batch identifier (send returns 'batchId', status and list return 'id')",
+    )
     status: BatchStatus = Field(..., description="Current batch status")
     total: int = Field(..., description="Total number of messages")
-    queued: int = Field(..., description="Messages queued successfully")
+    queued: Optional[int] = Field(
+        default=None,
+        description=(
+            "Messages queued successfully. None on the send response, which omits it; "
+            "batch status and list responses always carry it"
+        ),
+    )
     sent: int = Field(..., description="Messages sent")
     failed: int = Field(..., description="Messages that failed")
     credits_used: int = Field(..., alias="creditsUsed", description="Total credits used")
-    messages: List[BatchMessageResult] = Field(..., description="Individual message results")
-    created_at: str = Field(..., alias="createdAt", description="Creation timestamp")
+    messages: List[BatchMessageResult] = Field(
+        default_factory=list,
+        description=(
+            "Individual message results. Empty on the list response, which omits them, "
+            "and on a send that was accepted as 'processing'"
+        ),
+    )
+    delivered: Optional[int] = Field(
+        default=None,
+        description=(
+            "Messages confirmed delivered. None on the send response, which omits it; "
+            "batch status and list responses always carry it"
+        ),
+    )
+    credits_reserved: Optional[int] = Field(
+        default=None,
+        alias="creditsReserved",
+        description=(
+            "Credits held for the batch. None on the send response, which omits it; "
+            "batch status and list responses always carry it"
+        ),
+    )
+    credits_refunded: Optional[int] = Field(
+        default=None,
+        alias="creditsRefunded",
+        description=(
+            "Credits returned for skipped, failed, or over-reserved messages. "
+            "Every batch response carries it, send included"
+        ),
+    )
+    created_at: Optional[str] = Field(
+        default=None,
+        alias="createdAt",
+        description=(
+            "Creation timestamp. None on the send response, which omits it; "
+            "batch status and list responses always carry it"
+        ),
+    )
     completed_at: Optional[str] = Field(
         default=None, alias="completedAt", description="Completion timestamp"
     )
@@ -877,7 +1025,14 @@ class ApiKey(BaseModel):
     name: str = Field(..., description="Key name/label")
     type: Literal["test", "live"] = Field(..., description="Key type")
     prefix: str = Field(..., description="Key prefix for identification")
-    last_four: str = Field(..., alias="lastFour", description="Last 4 characters")
+    last_four: Optional[str] = Field(
+        default=None,
+        alias="lastFour",
+        description=(
+            "Last 4 characters. Always None from the API - no API key endpoint returns "
+            "this field; use `prefix` to identify a key"
+        ),
+    )
     permissions: List[str] = Field(default_factory=list, description="Permissions granted")
     created_at: str = Field(..., alias="createdAt", description="Creation timestamp")
     last_used_at: Optional[str] = Field(

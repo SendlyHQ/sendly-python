@@ -20,6 +20,42 @@ from sendly.types import BatchListResponse, BatchMessageResponse
 class TestSendBatch:
     """Test messages.send_batch() method"""
 
+    def test_send_batch_parses_real_production_payload(self, api_key, httpx_mock: HTTPXMock):
+        """POST /messages/batch omits queued and createdAt; parsing must not fail.
+
+        Pinned to the exact key set production returns (verified live against
+        sendly.live). The shared fixtures add queued/createdAt, which only the
+        batch *status* endpoint sends, so they cannot catch a regression here.
+        """
+        client = Sendly(api_key)
+
+        httpx_mock.add_response(
+            url="https://sendly.live/api/v1/messages/batch",
+            method="POST",
+            status_code=202,
+            json={
+                "batchId": "batch_c9e4689fdb5e4209a7935e415718c79d",
+                "status": "processing",
+                "total": 1,
+                "sent": 0,
+                "failed": 0,
+                "optedOutSkipped": 0,
+                "invalidSkipped": 0,
+                "creditsUsed": 2,
+                "creditsRefunded": 0,
+                "messages": [],
+            },
+        )
+
+        batch = client.messages.send_batch(
+            messages=[{"to": "+15551234567", "text": "Hello"}]
+        )
+
+        assert isinstance(batch, BatchMessageResponse)
+        assert batch.batch_id == "batch_c9e4689fdb5e4209a7935e415718c79d"
+        assert batch.queued is None
+        assert batch.created_at is None
+
     def test_send_batch_basic(self, api_key, mock_batch_response, httpx_mock: HTTPXMock):
         """Test sending a basic batch"""
         client = Sendly(api_key)
@@ -319,8 +355,139 @@ class TestSendBatch:
         client.close()
 
 
+class TestBatchMessageResponseModel:
+    """Test BatchMessageResponse tolerates both batch id spellings"""
+
+    def test_accepts_id_from_batch_status_payload(self):
+        batch = BatchMessageResponse(
+            **{
+                "id": "batch_test_123",
+                "status": "completed",
+                "total": 1,
+                "sent": 1,
+                "failed": 0,
+                "creditsUsed": 2,
+                "messages": [],
+            }
+        )
+
+        assert batch.batch_id == "batch_test_123"
+
+    def test_accepts_batch_id_from_send_payload(self):
+        batch = BatchMessageResponse(
+            **{
+                "batchId": "batch_test_123",
+                "status": "processing",
+                "total": 1,
+                "sent": 0,
+                "failed": 0,
+                "creditsUsed": 2,
+                "creditsRefunded": 0,
+                "messages": [],
+            }
+        )
+
+        assert batch.batch_id == "batch_test_123"
+        assert batch.credits_refunded == 0
+
+    def test_send_payload_omits_status_only_counters(self):
+        """The send response carries no queued/delivered/creditsReserved/createdAt"""
+        batch = BatchMessageResponse(
+            **{
+                "batchId": "batch_test_123",
+                "status": "processing",
+                "total": 1,
+                "sent": 0,
+                "failed": 0,
+                "creditsUsed": 0,
+                "creditsRefunded": 0,
+                "messages": [],
+            }
+        )
+
+        assert batch.queued is None
+        assert batch.delivered is None
+        assert batch.credits_reserved is None
+        assert batch.created_at is None
+
+    def test_accepts_field_name_and_serializes_as_batch_id(self):
+        batch = BatchMessageResponse(
+            batch_id="batch_test_123",
+            status="completed",
+            total=1,
+            sent=1,
+            failed=0,
+            creditsUsed=2,
+            messages=[],
+        )
+
+        assert batch.batch_id == "batch_test_123"
+        assert batch.model_dump(by_alias=True)["batchId"] == "batch_test_123"
+
+
 class TestGetBatch:
     """Test messages.get_batch() method"""
+
+    def test_get_batch_parses_real_production_payload(self, api_key, httpx_mock: HTTPXMock):
+        """GET /messages/batch/:id keys the batch as 'id', not 'batchId'.
+
+        Pinned to the exact key set production returns (verified live against
+        sendly.live). The shared fixtures send 'batchId', which only the batch
+        *send* endpoint uses, so they cannot catch a regression here.
+        """
+        client = Sendly(api_key)
+
+        httpx_mock.add_response(
+            url="https://sendly.live/api/v1/messages/batch/batch_c9e4689fdb5e4209a7935e415718c79d",
+            method="GET",
+            json={
+                "id": "batch_c9e4689fdb5e4209a7935e415718c79d",
+                "status": "completed",
+                "total": 2,
+                "queued": 2,
+                "sent": 2,
+                "delivered": 1,
+                "failed": 0,
+                "creditsReserved": 4,
+                "creditsUsed": 4,
+                "creditsRefunded": 0,
+                "createdAt": "2026-08-25T10:00:00.000Z",
+                "completedAt": "2026-08-25T10:00:05.000Z",
+                "messages": [
+                    {
+                        "id": "msg_1",
+                        "to": "+15551234567",
+                        "status": "delivered",
+                        "error": None,
+                        "createdAt": "2026-08-25T10:00:00.000Z",
+                        "deliveredAt": "2026-08-25T10:00:03.000Z",
+                    },
+                    {
+                        "id": "msg_2",
+                        "to": "+15559876543",
+                        "status": "sent",
+                        "error": None,
+                        "createdAt": "2026-08-25T10:00:00.000Z",
+                        "deliveredAt": None,
+                    },
+                ],
+            },
+        )
+
+        batch = client.messages.get_batch("batch_c9e4689fdb5e4209a7935e415718c79d")
+
+        assert isinstance(batch, BatchMessageResponse)
+        assert batch.batch_id == "batch_c9e4689fdb5e4209a7935e415718c79d"
+        assert batch.status.value == "completed"
+        assert batch.queued == 2
+        assert batch.delivered == 1
+        assert batch.credits_reserved == 4
+        assert batch.credits_refunded == 0
+        assert batch.created_at == "2026-08-25T10:00:00.000Z"
+        assert len(batch.messages) == 2
+        assert batch.messages[0].id == "msg_1"
+
+        client.close()
 
     def test_get_batch_by_id(self, api_key, mock_batch_response, httpx_mock: HTTPXMock):
         """Test getting batch by ID"""
@@ -428,6 +595,52 @@ class TestGetBatch:
 
 class TestListBatches:
     """Test messages.list_batches() method"""
+
+    def test_list_batches_parses_real_production_payload(self, api_key, httpx_mock: HTTPXMock):
+        """GET /messages/batches keys each batch as 'id' and omits 'messages'.
+
+        Pinned to the exact key set production returns (verified live against
+        sendly.live).
+        """
+        client = Sendly(api_key)
+
+        httpx_mock.add_response(
+            url="https://sendly.live/api/v1/messages/batches",
+            method="GET",
+            json={
+                "data": [
+                    {
+                        "id": "batch_c9e4689fdb5e4209a7935e415718c79d",
+                        "status": "completed",
+                        "total": 2,
+                        "queued": 2,
+                        "sent": 2,
+                        "delivered": 1,
+                        "failed": 0,
+                        "creditsReserved": 4,
+                        "creditsUsed": 4,
+                        "creditsRefunded": 0,
+                        "createdAt": "2026-08-25T10:00:00.000Z",
+                        "completedAt": "2026-08-25T10:00:05.000Z",
+                    }
+                ],
+                "count": 1,
+            },
+        )
+
+        result = client.messages.list_batches()
+
+        assert isinstance(result, BatchListResponse)
+        assert result.count == 1
+        assert result.data[0].batch_id == "batch_c9e4689fdb5e4209a7935e415718c79d"
+        assert result.data[0].queued == 2
+        assert result.data[0].delivered == 1
+        assert result.data[0].credits_reserved == 4
+        assert result.data[0].credits_refunded == 0
+        assert result.data[0].created_at == "2026-08-25T10:00:00.000Z"
+        assert result.data[0].messages == []
+
+        client.close()
 
     def test_list_batches_basic(self, api_key, mock_batch_list, httpx_mock: HTTPXMock):
         """Test listing batches"""

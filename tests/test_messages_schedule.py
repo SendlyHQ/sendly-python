@@ -446,6 +446,37 @@ class TestGetScheduled:
 class TestCancelScheduled:
     """Test messages.cancel_scheduled() method"""
 
+    def test_cancel_scheduled_parses_real_production_payload(
+        self, api_key, httpx_mock: HTTPXMock
+    ):
+        """DELETE /messages/scheduled/:id returns no 'cancelledAt'.
+
+        Pinned to the exact key set production returns; the shared fixture adds
+        cancelledAt, which the endpoint never sends, so it cannot catch a
+        regression here.
+        """
+        client = Sendly(api_key)
+
+        httpx_mock.add_response(
+            url="https://sendly.live/api/v1/messages/scheduled/msg_scheduled_123",
+            method="DELETE",
+            json={
+                "id": "msg_scheduled_123",
+                "status": "cancelled",
+                "creditsRefunded": 1,
+            },
+        )
+
+        cancelled = client.messages.cancel_scheduled("msg_scheduled_123")
+
+        assert isinstance(cancelled, CancelledMessageResponse)
+        assert cancelled.id == "msg_scheduled_123"
+        assert cancelled.status == "cancelled"
+        assert cancelled.credits_refunded == 1
+        assert cancelled.cancelled_at is None
+
+        client.close()
+
     def test_cancel_scheduled(self, api_key, mock_cancelled_message, httpx_mock: HTTPXMock):
         """Test cancelling a scheduled message"""
         client = Sendly(api_key)

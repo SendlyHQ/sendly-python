@@ -126,8 +126,10 @@ class AccountResource:
         Returns:
             Array of API keys
         """
-        response = self._http.request("GET", "/keys")
-        return [ApiKey(**_transform_response(k, API_KEY_MAP)) for k in response]
+        response = self._http.request("GET", "/account/keys")
+        return [
+            ApiKey(**_transform_response(k, API_KEY_MAP)) for k in response.get("keys", [])
+        ]
 
     def get_api_key(self, key_id: str) -> ApiKey:
         """
@@ -139,7 +141,7 @@ class AccountResource:
         Returns:
             API key details
         """
-        response = self._http.request("GET", f"/keys/{key_id}")
+        response = self._http.request("GET", f"/account/keys/{key_id}")
         return ApiKey(**_transform_response(response, API_KEY_MAP))
 
     def get_api_key_usage(self, key_id: str) -> Dict[str, Any]:
@@ -152,7 +154,7 @@ class AccountResource:
         Returns:
             Usage statistics
         """
-        response = self._http.request("GET", f"/keys/{key_id}/usage")
+        response = self._http.request("GET", f"/account/keys/{key_id}/usage")
         return response
 
     def create_api_key(self, name: str, expires_at: Optional[str] = None) -> Dict[str, Any]:
@@ -190,7 +192,7 @@ class AccountResource:
         if not key_id:
             raise ValueError("API key ID is required")
 
-        self._http.request("DELETE", f"/account/keys/{key_id}")
+        self._http.request("PATCH", f"/account/keys/{key_id}/revoke", body={})
 
     def rotate_api_key(
         self, key_id: str, grace_period_hours: Optional[int] = None
@@ -275,17 +277,19 @@ class AsyncAccountResource:
 
     async def list_api_keys(self) -> List[ApiKey]:
         """List API keys for the account."""
-        response = await self._http.request("GET", "/keys")
-        return [ApiKey(**_transform_response(k, API_KEY_MAP)) for k in response]
+        response = await self._http.request("GET", "/account/keys")
+        return [
+            ApiKey(**_transform_response(k, API_KEY_MAP)) for k in response.get("keys", [])
+        ]
 
     async def get_api_key(self, key_id: str) -> ApiKey:
         """Get a specific API key by ID."""
-        response = await self._http.request("GET", f"/keys/{key_id}")
+        response = await self._http.request("GET", f"/account/keys/{key_id}")
         return ApiKey(**_transform_response(response, API_KEY_MAP))
 
     async def get_api_key_usage(self, key_id: str) -> Dict[str, Any]:
         """Get usage statistics for an API key."""
-        response = await self._http.request("GET", f"/keys/{key_id}/usage")
+        response = await self._http.request("GET", f"/account/keys/{key_id}/usage")
         return response
 
     async def create_api_key(self, name: str, expires_at: Optional[str] = None) -> Dict[str, Any]:
@@ -319,7 +323,7 @@ class AsyncAccountResource:
         if not key_id:
             raise ValueError("API key ID is required")
 
-        await self._http.request("DELETE", f"/account/keys/{key_id}")
+        await self._http.request("PATCH", f"/account/keys/{key_id}/revoke", body={})
 
     async def rotate_api_key(
         self, key_id: str, grace_period_hours: Optional[int] = None

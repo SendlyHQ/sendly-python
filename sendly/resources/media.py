@@ -60,6 +60,7 @@ class MediaResource:
                 "Authorization": f"Bearer {self._http.api_key}",
                 "Accept": "application/json",
                 "User-Agent": self._http.client.headers.get("User-Agent", ""),
+                "Idempotency-Key": self._http._generate_idempotency_key(),
             },
         )
 
@@ -118,6 +119,7 @@ class AsyncMediaResource:
                 "Authorization": f"Bearer {self._http.api_key}",
                 "Accept": "application/json",
                 "User-Agent": self._http.client.headers.get("User-Agent", ""),
+                "Idempotency-Key": self._http._generate_idempotency_key(),
             },
         )
 

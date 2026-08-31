@@ -63,6 +63,7 @@ class MessagesResource:
         card: Optional[Dict[str, Any]] = None,
         suggestions: Optional[List[Dict[str, Any]]] = None,
         fallback_to_sms: Optional[bool] = None,
+        idempotency_key: Optional[str] = None,
         **kwargs: Any,
     ) -> Union[Message, WhatsAppMessage, RcsMessage]:
         """
@@ -120,6 +121,12 @@ class MessagesResource:
             fallback_to_sms: RCS only - deliver as SMS when the recipient
                 doesn't support RCS (default True). Pass False to get a 422
                 rcs_not_supported_for_recipient instead
+            idempotency_key: Optional key (1-255 printable ASCII characters)
+                sent as the Idempotency-Key header - retrying with the same
+                key returns the original result instead of sending again.
+                When omitted, a unique key is generated automatically and
+                reused across retry attempts; supply your own to extend that
+                protection across process restarts
 
         Returns:
             The created message (a WhatsAppMessage when channel='whatsapp',
@@ -176,6 +183,7 @@ class MessagesResource:
                 body=_rcs_send_body(
                     to, text, agent_id, card, suggestions, fallback_to_sms, metadata
                 ),
+                idempotency_key=idempotency_key,
             )
 
             try:
@@ -215,6 +223,7 @@ class MessagesResource:
                 method="POST",
                 path="/messages",
                 body=body,
+                idempotency_key=idempotency_key,
             )
 
             try:
@@ -249,6 +258,7 @@ class MessagesResource:
             method="POST",
             path="/messages",
             body=body,
+            idempotency_key=idempotency_key,
         )
 
         try:
@@ -406,6 +416,7 @@ class MessagesResource:
         from_: Optional[str] = None,
         message_type: Optional[str] = None,
         metadata: Optional[Dict[str, Any]] = None,
+        idempotency_key: Optional[str] = None,
         **kwargs: Any,
     ) -> ScheduledMessage:
         """
@@ -418,6 +429,10 @@ class MessagesResource:
             from_: Optional sender ID (for international destinations only)
             message_type: Message type for compliance - 'marketing' (default, subject to quiet hours) or 'transactional' (24/7)
             metadata: Custom JSON metadata to attach to the message (max 4KB)
+            idempotency_key: Optional key (1-255 printable ASCII characters)
+                sent as the Idempotency-Key header - retrying with the same
+                key returns the original result instead of scheduling again.
+                Auto-generated when omitted
 
         Returns:
             The scheduled message
@@ -452,6 +467,7 @@ class MessagesResource:
             method="POST",
             path="/messages/schedule",
             body=body,
+            idempotency_key=idempotency_key,
         )
 
         try:
@@ -568,6 +584,7 @@ class MessagesResource:
         from_: Optional[str] = None,
         message_type: Optional[str] = None,
         metadata: Optional[Dict[str, Any]] = None,
+        idempotency_key: Optional[str] = None,
         **kwargs: Any,
     ) -> BatchMessageResponse:
         """
@@ -578,6 +595,10 @@ class MessagesResource:
             from_: Optional sender ID (for international destinations only)
             message_type: Message type for compliance - 'marketing' (default, subject to quiet hours) or 'transactional' (24/7)
             metadata: Shared metadata for all messages in the batch (max 4KB). Per-message metadata takes priority when merging.
+            idempotency_key: Optional key (1-255 printable ASCII characters)
+                sent as the Idempotency-Key header - retrying with the same
+                key returns the original result instead of sending again.
+                No key is auto-generated for batches
 
         Returns:
             Batch response with individual message results
@@ -590,7 +611,7 @@ class MessagesResource:
             ...     ]
             ... )
             >>> print(batch.batch_id)
-            >>> print(batch.queued)
+            >>> print(batch.sent)
         """
         if not messages or not isinstance(messages, list):
             raise SendlyError(
@@ -621,10 +642,15 @@ class MessagesResource:
         if metadata:
             body["metadata"] = metadata
 
+        # The batch endpoint dedupes header-less retries server-side by
+        # hashing the request content; an auto-generated key would bypass
+        # that net, so only caller-supplied keys are sent.
         data = self._http.request(
             method="POST",
             path="/messages/batch",
             body=body,
+            idempotency_key=idempotency_key,
+            auto_idempotency_key=False,
         )
 
         try:
@@ -782,6 +808,7 @@ class MessagesResource:
         from_: Optional[str] = None,
         media_urls: Optional[List[str]] = None,
         message_type: Optional[str] = None,
+        idempotency_key: Optional[str] = None,
         **kwargs: Any,
     ) -> GroupMessageResponse:
         """
@@ -797,6 +824,10 @@ class MessagesResource:
             from_: Optional sender ID or phone number
             media_urls: Optional media URLs for the group MMS
             message_type: 'marketing' or 'transactional' (default)
+            idempotency_key: Optional key (1-255 printable ASCII characters)
+                sent as the Idempotency-Key header - retrying with the same
+                key returns the original result instead of sending again.
+                Auto-generated when omitted
 
         Returns:
             The created group message, including a group_message_id
@@ -845,6 +876,7 @@ class MessagesResource:
             method="POST",
             path="/messages/group",
             body=body,
+            idempotency_key=idempotency_key,
         )
 
         try:
@@ -939,6 +971,7 @@ class AsyncMessagesResource:
         card: Optional[Dict[str, Any]] = None,
         suggestions: Optional[List[Dict[str, Any]]] = None,
         fallback_to_sms: Optional[bool] = None,
+        idempotency_key: Optional[str] = None,
         **kwargs: Any,
     ) -> Union[Message, WhatsAppMessage, RcsMessage]:
         """
@@ -967,6 +1000,10 @@ class AsyncMessagesResource:
             suggestions: RCS only - suggestion chips for a text message
             fallback_to_sms: RCS only - deliver as SMS when the recipient
                 doesn't support RCS (default True)
+            idempotency_key: Optional key (1-255 printable ASCII characters)
+                sent as the Idempotency-Key header - retrying with the same
+                key returns the original result instead of sending again.
+                Auto-generated when omitted
 
         Returns:
             The created message (a WhatsAppMessage when channel='whatsapp',
@@ -988,6 +1025,7 @@ class AsyncMessagesResource:
                 body=_rcs_send_body(
                     to, text, agent_id, card, suggestions, fallback_to_sms, metadata
                 ),
+                idempotency_key=idempotency_key,
             )
 
             try:
@@ -1027,6 +1065,7 @@ class AsyncMessagesResource:
                 method="POST",
                 path="/messages",
                 body=body,
+                idempotency_key=idempotency_key,
             )
 
             try:
@@ -1061,6 +1100,7 @@ class AsyncMessagesResource:
             method="POST",
             path="/messages",
             body=body,
+            idempotency_key=idempotency_key,
         )
 
         try:
@@ -1208,6 +1248,7 @@ class AsyncMessagesResource:
         from_: Optional[str] = None,
         message_type: Optional[str] = None,
         metadata: Optional[Dict[str, Any]] = None,
+        idempotency_key: Optional[str] = None,
         **kwargs: Any,
     ) -> ScheduledMessage:
         """
@@ -1220,6 +1261,10 @@ class AsyncMessagesResource:
             from_: Optional sender ID (for international destinations only)
             message_type: Message type for compliance - 'marketing' (default, subject to quiet hours) or 'transactional' (24/7)
             metadata: Custom JSON metadata to attach to the message (max 4KB)
+            idempotency_key: Optional key (1-255 printable ASCII characters)
+                sent as the Idempotency-Key header - retrying with the same
+                key returns the original result instead of scheduling again.
+                Auto-generated when omitted
 
         Returns:
             The scheduled message
@@ -1245,6 +1290,7 @@ class AsyncMessagesResource:
             method="POST",
             path="/messages/schedule",
             body=body,
+            idempotency_key=idempotency_key,
         )
 
         try:
@@ -1335,6 +1381,7 @@ class AsyncMessagesResource:
         from_: Optional[str] = None,
         message_type: Optional[str] = None,
         metadata: Optional[Dict[str, Any]] = None,
+        idempotency_key: Optional[str] = None,
         **kwargs: Any,
     ) -> BatchMessageResponse:
         """Send multiple SMS messages in a single batch (async)"""
@@ -1367,10 +1414,15 @@ class AsyncMessagesResource:
         if metadata:
             body["metadata"] = metadata
 
+        # The batch endpoint dedupes header-less retries server-side by
+        # hashing the request content; an auto-generated key would bypass
+        # that net, so only caller-supplied keys are sent.
         data = await self._http.request(
             method="POST",
             path="/messages/batch",
             body=body,
+            idempotency_key=idempotency_key,
+            auto_idempotency_key=False,
         )
 
         try:
@@ -1490,6 +1542,7 @@ class AsyncMessagesResource:
         from_: Optional[str] = None,
         media_urls: Optional[List[str]] = None,
         message_type: Optional[str] = None,
+        idempotency_key: Optional[str] = None,
         **kwargs: Any,
     ) -> GroupMessageResponse:
         """
@@ -1505,6 +1558,10 @@ class AsyncMessagesResource:
             from_: Optional sender ID or phone number
             media_urls: Optional media URLs for the group MMS
             message_type: 'marketing' or 'transactional' (default)
+            idempotency_key: Optional key (1-255 printable ASCII characters)
+                sent as the Idempotency-Key header - retrying with the same
+                key returns the original result instead of sending again.
+                Auto-generated when omitted
 
         Returns:
             The created group message, including a group_message_id
@@ -1546,6 +1603,7 @@ class AsyncMessagesResource:
             method="POST",
             path="/messages/group",
             body=body,
+            idempotency_key=idempotency_key,
         )
 
         try:

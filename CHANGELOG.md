@@ -1,5 +1,26 @@
 # sendly (Python)
 
+## 3.38.0
+
+### Minor Changes
+
+- **Every POST now carries an idempotency key automatically.** The client generates a unique `Idempotency-Key` per request and reuses that same key across its own timeout and network-error retries, so a retry of a request that already reached the API returns the original result instead of sending and charging a second time. The server records a key only once the first attempt has finished, so this narrows the duplicate-send window rather than closing it: a retry that fires while the original is still running is not seen as a repeat. You do not have to do anything to get this. After a `5xx` the generated key is rotated, so the retry is a fresh attempt rather than a repeat of the failed one. The server does not record a 5xx against a key either, so a retry re-executes on both counts. The key is honored by the endpoints where a duplicate costs you money: single sends, scheduled sends, group sends, batch sends, verification starts and workspace provisioning.
+- **New `idempotency_key` argument** on `messages.send()`, `messages.schedule()`, `messages.send_group()` and `messages.send_batch()`, sync and async. Supply your own key when the guarantee has to outlive the process, for example a job queue that re-runs your handler after a crash. Reusing a key within 24 hours returns the original response; reusing it with a different body returns `422 idempotency_key_mismatch`, so derive keys from something stable in your domain such as an order id. Keys must be 1 to 255 printable ASCII characters, and anything else raises `ValidationError` before a request leaves the process. An empty or whitespace-only string counts as no key at all, so the automatic one still applies.
+- `send_batch()` deliberately sends no automatic key. The batch endpoint already collapses identical retried batches by hashing their contents, and an auto-generated key would bypass that net. Pass `idempotency_key` yourself if you want an explicit one on a batch.
+- Multipart uploads (`media.upload()`, enterprise verification documents, the business-upgrade EIN letter) now send a single-use key per attempt. Those calls are not retried by the client, so the key labels the upload but does not protect you against a timeout on one.
+- `BatchMessageResponse` gains `delivered`, `credits_reserved` and `credits_refunded`. The batch status and list endpoints have always returned these and the model dropped them on the floor.
+
+### Patch Changes
+
+- **`messages.send_batch()` could not succeed against the real API, and now does.** `BatchMessageResponse` required `queued` and `created_at`, which the send endpoint does not return (only the batch status endpoint does), so every live batch send raised `invalid_response` after the batch had already been accepted and the messages were on their way out. Both fields are now optional. No mocked test could catch this, because the shared fixtures invented both fields; the regression test is pinned to the payload production really sends. If you built a retry loop around this failure, check that you are not re-sending batches that already went.
+- **`messages.get_batch()` and `messages.list_batches()` could never parse a response either.** Both endpoints key the batch as `id`, while only the send endpoint uses `batchId`, and the list response omits per-message results altogether. `batch_id` now accepts either spelling and `messages` defaults to an empty list, so both calls return real data. `model_dump(by_alias=True)` still writes `batchId`.
+- Know which batch response you are holding. A large batch is accepted as `processing`, and that send response carries an empty `messages` list with `queued`, `delivered`, `credits_reserved` and `created_at` all `None`. Poll `get_batch(batch.batch_id)` for the per-message results and those counters. `credits_refunded` is on every batch response, the send included.
+- **API key management was pointed at paths the server does not serve.** `list_api_keys()`, `get_api_key()` and `get_api_key_usage()` requested `/keys...` and got a 404 every time. They now use `/account/keys...`, and the list unwraps the `{"keys": [...]}` envelope the server actually returns.
+- **`revoke_api_key()` never revoked anything.** It sent `DELETE` to a path that only answers `GET`, so it raised a not-found error and the key stayed live. It now sends `PATCH /account/keys/{id}/revoke` and really does revoke the key. If you have code that calls it and tolerates the failure, that call takes effect from this version on, so check it is aimed at the key you mean.
+- Scheduled message IDs are `schd_...`, but the client-side ID validator accepted only `msg_...` and bare UUIDs. Passing the ID you got back from `schedule()` into `get_scheduled()` or `cancel_scheduled()` raised `ValidationError` before any request was made. `schd_` IDs are now accepted. Batch IDs are still not message IDs; `get_batch()` validates those itself.
+- `cancel_scheduled()` now returns instead of raising. `CancelledMessageResponse.cancelled_at` was required, but the cancel endpoint returns only `id`, `status` and `creditsRefunded`, so a cancellation that really took effect still came back to you as an `invalid_response` error. The field is now optional and will always be `None`, because the API does not send it. Use your own clock if you need the time of cancellation.
+- `ApiKey.last_four` is now optional and will always be `None`. No API key endpoint returns that field, so while it was required it would have failed to parse even once the requests were aimed at the right routes. Use `prefix` to tell keys apart.
+
 ## 3.33.0
 
 ### Patch Changes
@@ -42,7 +63,7 @@
 
 - `/api/v1/enterprise/workspaces/:id/verification/submit` now returns specific missing-field errors (e.g. `"Missing required fields: website"`) instead of listing every required field.
 - Endpoint accepts both flat and `{"verification": {...}}` wrapped shapes (matches `/enterprise/provision`).
-- `useCase` validation expanded from 23 entries to the full 43-value Telnyx enum.
+- `useCase` validation expanded from 23 entries to the full 43-value carrier use-case enum.
 
 ## 3.29.0
 

@@ -183,15 +183,22 @@ batch = client.messages.send_batch(
 )
 
 print(f'Batch ID: {batch.batch_id}')
-print(f'Queued: {batch.queued}')
+print(f'Status: {batch.status.value}')
 print(f'Failed: {batch.failed}')
 print(f'Credits used: {batch.credits_used}')
 
-# Get batch status
-status = client.messages.get_batch('batch_xxx')
+# A large batch is accepted as 'processing' with an empty messages list, so
+# poll the batch for per-message results. The send response carries no queued,
+# delivered, credits_reserved or created_at; get_batch and list_batches do.
+status = client.messages.get_batch(batch.batch_id)
+print(f'Queued: {status.queued}, delivered: {status.delivered}')
+for result in status.messages:
+    print(f'{result.to}: {result.status}')
 
-# List all batches
+# List all batches - same fields as get_batch, minus the per-message results
 result = client.messages.list_batches()
+for summary in result.data:
+    print(f'{summary.batch_id}: {summary.queued} queued, {summary.delivered} delivered')
 
 # Preview batch (dry run) - validates without sending
 preview = client.messages.preview_batch(
@@ -262,6 +269,33 @@ config = SendlyConfig(
 )
 client = Sendly(config=config)
 ```
+
+## Idempotency
+
+POSTs carry an automatically generated `Idempotency-Key`, reused across the
+SDK's own timeout and network-error retries, so a retry of a request that
+already reached the API returns the original result instead of sending and
+charging again. After a `5xx` the generated key is rotated so the retry really
+does run again. You do not have to do anything to get this.
+
+Pass your own key when the guarantee needs to outlive the process — a job queue
+that re-runs after a crash, or your own retry loop:
+
+```python
+client.messages.send(
+    to="+15551234567",
+    text="Your order has shipped!",
+    idempotency_key="order-4821-shipped",
+)
+```
+
+Reusing a key within 24 hours returns the original response. Reusing it with a
+different body raises `422 idempotency_key_mismatch`, so derive keys from
+something stable in your domain, like an order id. `send_batch` sends no
+automatic key, because the API already deduplicates identical batches by their
+contents.
+
+Full details: https://sendly.live/docs/idempotency
 
 ## Webhooks
 

@@ -253,6 +253,20 @@ class TestValidateMessageID:
         for msg_id in valid_ids:
             validate_message_id(msg_id)
 
+    def test_valid_scheduled_message_id(self):
+        """Scheduled messages are 'schd_...' in production"""
+        valid_ids = [
+            "schd_c9e4689fdb5e4209a7935e415718c79d",
+        ]
+
+        for msg_id in valid_ids:
+            validate_message_id(msg_id)
+
+    def test_batch_id_is_not_a_message_id(self):
+        """Batch IDs belong to get_batch(), which validates them itself"""
+        with pytest.raises(ValidationError, match="Invalid message ID format"):
+            validate_message_id("batch_c9e4689fdb5e4209a7935e415718c79d")
+
     def test_valid_uuid_message_id(self):
         """Test valid UUID message ID"""
         valid_uuids = [

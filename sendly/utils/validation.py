@@ -111,6 +111,8 @@ def validate_message_id(id: str) -> None:
     """
     Validate message ID format
 
+    Accepts: UUID format, msg_xxx, schd_xxx (scheduled)
+
     Args:
         id: Message ID to validate
 
@@ -123,9 +125,9 @@ def validate_message_id(id: str) -> None:
     if not isinstance(id, str):
         raise ValidationError("Message ID must be a string")
 
-    # UUID format or prefixed format
+    # UUID format or prefixed format (msg_, schd_)
     uuid_pattern = r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
-    prefixed_pattern = r"^msg_[a-zA-Z0-9_]+$"
+    prefixed_pattern = r"^(msg|schd)_[a-zA-Z0-9_]+$"
 
     if not (re.match(uuid_pattern, id, re.IGNORECASE) or re.match(prefixed_pattern, id)):
         raise ValidationError(f"Invalid message ID format: {id}")

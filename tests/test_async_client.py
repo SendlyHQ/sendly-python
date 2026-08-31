@@ -528,6 +528,78 @@ class TestAsyncBatchMessages:
         await client.close()
 
     @pytest.mark.asyncio
+    async def test_get_batch_parses_real_production_payload(
+        self, api_key, httpx_mock: HTTPXMock
+    ):
+        """GET /messages/batch/:id keys the batch as 'id', not 'batchId'."""
+        client = AsyncSendly(api_key)
+
+        httpx_mock.add_response(
+            url="https://sendly.live/api/v1/messages/batch/batch_test_123",
+            method="GET",
+            json={
+                "id": "batch_test_123",
+                "status": "processing",
+                "total": 1,
+                "queued": 1,
+                "sent": 0,
+                "delivered": 0,
+                "failed": 0,
+                "creditsReserved": 2,
+                "creditsUsed": 0,
+                "creditsRefunded": 0,
+                "createdAt": "2026-08-25T10:00:00.000Z",
+                "completedAt": None,
+                "messages": [],
+            },
+        )
+
+        batch = await client.messages.get_batch("batch_test_123")
+
+        assert batch.batch_id == "batch_test_123"
+        assert batch.status.value == "processing"
+
+        await client.close()
+
+    @pytest.mark.asyncio
+    async def test_list_batches_parses_real_production_payload(
+        self, api_key, httpx_mock: HTTPXMock
+    ):
+        """GET /messages/batches keys each batch as 'id' and omits 'messages'."""
+        client = AsyncSendly(api_key)
+
+        httpx_mock.add_response(
+            url="https://sendly.live/api/v1/messages/batches",
+            method="GET",
+            json={
+                "data": [
+                    {
+                        "id": "batch_test_123",
+                        "status": "completed",
+                        "total": 1,
+                        "queued": 1,
+                        "sent": 1,
+                        "delivered": 1,
+                        "failed": 0,
+                        "creditsReserved": 2,
+                        "creditsUsed": 2,
+                        "creditsRefunded": 0,
+                        "createdAt": "2026-08-25T10:00:00.000Z",
+                        "completedAt": "2026-08-25T10:00:05.000Z",
+                    }
+                ],
+                "count": 1,
+            },
+        )
+
+        result = await client.messages.list_batches()
+
+        assert result.data[0].batch_id == "batch_test_123"
+        assert result.data[0].messages == []
+
+        await client.close()
+
+    @pytest.mark.asyncio
     async def test_get_batch(self, api_key, mock_batch_response, httpx_mock: HTTPXMock):
         """Test getting batch status"""
         client = AsyncSendly(api_key)
