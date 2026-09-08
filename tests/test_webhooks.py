@@ -3,14 +3,20 @@ Tests for webhook verification and parsing
 """
 
 import json
+from dataclasses import dataclass
 
 import pytest
 
+from sendly.types import WebhookEventType as TypesWebhookEventType
 from sendly.webhooks import (
+    WEBHOOK_EVENT_TYPES,
     WebhookEvent,
+    WebhookEventType,
     WebhookMessageData,
     Webhooks,
     WebhookSignatureError,
+    WebhookVerificationData,
+    is_message_event,
 )
 
 
@@ -272,7 +278,7 @@ class TestWebhookParseEvent:
             Webhooks.parse_event(payload, signature, secret)
 
     def test_parse_event_sparse_data_structure(self):
-        """Test parsing event with sparse data uses defaults"""
+        """Sparse data leaves absent fields None instead of inventing values"""
         event_data = {
             "id": "evt_123",
             "type": "message.delivered",
@@ -288,9 +294,13 @@ class TestWebhookParseEvent:
 
         event = Webhooks.parse_event(payload, signature, secret)
         assert event.data.id == "msg_123"
-        assert event.data.status == ""
-        assert event.data.segments == 1
-        assert event.data.credits_used == 0
+        assert event.data.status is None
+        assert event.data.segments is None
+        assert event.data.credits_used is None
+        assert event.data.to is None
+        assert event.data.from_ is None
+        assert event.data.direction is None
+        assert event.object == {"message_id": "msg_123"}
 
     def test_parse_event_empty_payload(self):
         """Test parsing empty payload"""
@@ -568,3 +578,255 @@ class TestWebhookEdgeCases:
         event = Webhooks.parse_event(payload, signature, secret)
 
         assert event.data.message_id == "msg_large"
+
+
+class TestWebhookExtractionContract:
+    """data.object is reachable for every event type, and nothing is invented"""
+
+    SECRET = "test_secret"
+
+    def _parse(self, event_data):
+        payload = json.dumps(event_data)
+        signature = Webhooks.generate_signature(payload, self.SECRET)
+        return Webhooks.parse_event(payload, signature, self.SECRET)
+
+    def test_lifecycle_event_has_no_message_view(self):
+        """rcs_agent.live is not a message, so event.data is None"""
+        event = self._parse(
+            {
+                "id": "evt_rcs",
+                "type": "rcs_agent.live",
+                "created": 1767225600,
+                "livemode": True,
+                "data": {
+                    "object": {
+                        "agent_id": "bb22cc33",
+                        "name": "Acme Support",
+                        "stage": "live",
+                        "organization_id": "0a1b2c3d",
+                    }
+                },
+            }
+        )
+
+        assert event.data is None
+        assert event.object["agent_id"] == "bb22cc33"
+        assert event.object["stage"] == "live"
+        assert event.raw_object is event.object
+
+    def test_lifecycle_object_keeps_camel_case_keys(self):
+        """Keys arrive verbatim; camelCase is not rewritten"""
+        event = self._parse(
+            {
+                "id": "evt_wa",
+                "type": "whatsapp_template.approved",
+                "created": 1767225600,
+                "data": {
+                    "object": {
+                        "id": "dd44ee55",
+                        "name": "appointment_reminder",
+                        "qualityRating": None,
+                        "rejectionReason": None,
+                        "createdAt": "2026-01-01T00:00:00.000Z",
+                    }
+                },
+            }
+        )
+
+        assert event.data is None
+        assert event.object["createdAt"] == "2026-01-01T00:00:00.000Z"
+        assert event.object["qualityRating"] is None
+        assert "quality_rating" not in event.object
+
+    def test_call_event_null_numbers_stay_null(self):
+        """In-app calls have null from/to; null must not become ''"""
+        event = self._parse(
+            {
+                "id": "evt_call",
+                "type": "call.started",
+                "created": 1767225600,
+                "data": {
+                    "object": {
+                        "id": "ff660011",
+                        "object": "call",
+                        "kind": "internal",
+                        "direction": "outbound",
+                        "status": "active",
+                        "from": None,
+                        "to": None,
+                        "duration_secs": 0,
+                        "agent_id": None,
+                    }
+                },
+            }
+        )
+
+        assert event.data is None
+        assert event.object["from"] is None
+        assert event.object["to"] is None
+        assert event.object["agent_id"] is None
+        assert event.object["duration_secs"] == 0
+
+    def test_contact_auto_flagged_does_not_mis_attribute_message_id(self):
+        """`id` is the contact; `message_id` is the message. Never swap them."""
+        event = self._parse(
+            {
+                "id": "evt_contact",
+                "type": "contact.auto_flagged",
+                "created": 1767225600,
+                "data": {
+                    "object": {
+                        "id": "contact-5e4d3c2b",
+                        "message_id": "message-2d1f8a34",
+                        "phone_number": "+15555550144",
+                        "invalid_reason": "landline",
+                        "error_code": "E003",
+                    }
+                },
+            }
+        )
+
+        assert event.data is None, "a contact event must not present as a message"
+        assert event.object["id"] == "contact-5e4d3c2b"
+        assert event.object["message_id"] == "message-2d1f8a34"
+
+    def test_unknown_event_type_parses(self):
+        """An event type this SDK version predates still parses"""
+        event = self._parse(
+            {
+                "id": "evt_new",
+                "type": "something.invented_later",
+                "created": 1767225600,
+                "data": {"object": {"id": "f1e2d3c4", "some_new_field": "a value"}},
+            }
+        )
+
+        assert event.type == "something.invented_later"
+        assert event.data is None
+        assert event.object["some_new_field"] == "a value"
+
+    def test_message_event_keeps_message_view(self):
+        """message.* events still get the message view, unchanged"""
+        event = self._parse(
+            {
+                "id": "evt_msg",
+                "type": "message.delivered",
+                "created": 1767225600,
+                "data": {
+                    "object": {
+                        "id": "7c9e6679",
+                        "to": "+15555550123",
+                        "from": "+15555550188",
+                        "text": "Hello",
+                        "status": "delivered",
+                        "direction": "outbound",
+                        "segments": 1,
+                        "credits_used": 2,
+                    }
+                },
+            }
+        )
+
+        assert event.data is not None
+        assert event.data.id == "7c9e6679"
+        assert event.data.message_id == "7c9e6679"
+        assert event.data.to == "+15555550123"
+        assert event.data.from_ == "+15555550188"
+        assert event.data.credits_used == 2
+        assert event.object["from"] == "+15555550188"
+
+    def test_object_as_dict_by_default(self):
+        event = self._parse(
+            {
+                "id": "evt_num",
+                "type": "number.activated",
+                "created": 1767225600,
+                "data": {"object": {"id": "8c7b6a59", "phone": "+15555550188"}},
+            }
+        )
+
+        obj = event.object_as()
+        assert obj == {"id": "8c7b6a59", "phone": "+15555550188"}
+        assert obj is not event.object
+
+    def test_object_as_dataclass_maps_reserved_words(self):
+        @dataclass
+        class CallObject:
+            id: str = None
+            from_: str = None
+            to: str = None
+            unmentioned: str = None
+
+        event = self._parse(
+            {
+                "id": "evt_call2",
+                "type": "call.completed",
+                "created": 1767225600,
+                "data": {
+                    "object": {"id": "ee55ff66", "from": "+15555550188", "to": "+15555550123"}
+                },
+            }
+        )
+
+        call = event.object_as(CallObject)
+        assert call.id == "ee55ff66"
+        assert call.from_ == "+15555550188"
+        assert call.to == "+15555550123"
+        assert call.unmentioned is None
+
+    def test_object_as_verification_data(self):
+        event = self._parse(
+            {
+                "id": "evt_ver",
+                "type": "verification.verified",
+                "created": 1767225600,
+                "data": {
+                    "object": {
+                        "id": "b1f0c9d2",
+                        "phone": "+15555550123",
+                        "status": "verified",
+                        "attempts": 1,
+                    }
+                },
+            }
+        )
+
+        assert event.data is None, "a verification event is not message-shaped"
+        verification = event.object_as(WebhookVerificationData)
+        assert verification.phone == "+15555550123"
+        assert verification.attempts == 1
+        assert verification.max_attempts is None, "absent field must stay None"
+
+
+class TestWebhookEventTypeSourceOfTruth:
+    """webhooks.WebhookEventType is sendly.types.WebhookEventType, not a copy"""
+
+    def test_reexports_the_types_enum(self):
+        assert WebhookEventType is TypesWebhookEventType
+
+    def test_live_event_types_are_present(self):
+        for event_type in (
+            "rcs_agent.live",
+            "whatsapp_template.approved",
+            "call.started",
+            "call.completed",
+            "call.recording.ready",
+            "conversation.updated",
+            "draft.created",
+            "contact.auto_flagged",
+            "contacts.lookup_completed",
+        ):
+            assert event_type in WEBHOOK_EVENT_TYPES
+
+    def test_removed_event_types_are_gone(self):
+        assert "message.queued" not in WEBHOOK_EVENT_TYPES
+        assert "message.undelivered" not in WEBHOOK_EVENT_TYPES
+
+    def test_is_message_event(self):
+        assert is_message_event("message.delivered") is True
+        assert is_message_event(WebhookEventType.MESSAGE_RECEIVED) is True
+        assert is_message_event("rcs_agent.live") is False
+        assert is_message_event("call.started") is False
+        assert is_message_event("contact.auto_flagged") is False
+        assert is_message_event("verification.verified") is False
+        assert is_message_event("something.invented_later") is False

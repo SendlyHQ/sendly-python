@@ -238,6 +238,8 @@ from .webhooks import (
     WebhookMessageStatus,
     Webhooks,
     WebhookSignatureError,
+    WebhookVerificationData,
+    is_message_event,
 )
 
 __all__ = [
@@ -448,4 +450,6 @@ __all__ = [
     "WebhookEventType",
     "WebhookMessageData",
     "WebhookMessageStatus",
+    "WebhookVerificationData",
+    "is_message_event",
 ]

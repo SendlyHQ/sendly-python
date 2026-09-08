@@ -369,6 +369,60 @@ def handle_webhook():
         return 'Invalid signature', 400
 ```
 
+### Reading the Event Payload
+
+`event.object` is `data.object` exactly as it arrived, for **every** event type.
+Keys are verbatim (`camelCase` stays `camelCase`), JSON `null` stays `None`, and
+nothing the payload did not carry is added.
+
+`event.data` is the *message* view. It is `None` for every event that is not a
+`message.*` event, because RCS, WhatsApp, voice (`call.*`), 10DLC
+(`brand.*` / `campaign.*` / `assignment.*`), `number.*`, `port*`, `contact*`,
+`conversation.*`, `draft.*` and `verification.*` payloads are not
+message-shaped.
+
+```python
+from dataclasses import dataclass
+from sendly import Webhooks
+
+event = Webhooks.parse_event(payload, signature, WEBHOOK_SECRET, timestamp=timestamp)
+
+if event.data is not None:
+    # message.* event
+    print(event.data.id, event.data.to, event.data.credits_used)
+else:
+    # lifecycle event: read the raw object
+    print(event.object)
+
+# A contact flagged by a send failure: `id` is the contact, `message_id` is
+# the message that failed. They are never swapped.
+if event.type == 'contact.auto_flagged':
+    contact_id = event.object['id']
+    failed_message_id = event.object['message_id']
+
+# In-app calls legitimately have no numbers; null stays None, never ''
+if event.type == 'call.started':
+    # from/to are null for in-app (browser) calls and carry E.164 numbers
+    # for PSTN legs, so treat them as optional rather than assuming either.
+    caller = event.object.get('from')
+
+# Or decode into a shape of your own (dataclass, pydantic model, or dict)
+@dataclass
+class AgentLive:
+    agent_id: str = None
+    name: str = None
+    stage: str = None
+
+if event.type == 'rcs_agent.live':
+    agent = event.object_as(AgentLive)
+    print(agent.agent_id, agent.stage)
+
+raw = event.object_as()  # plain dict copy
+```
+
+Event types live in one place, `sendly.types.WebhookEventType`; `sendly.WebhookEventType`
+re-exports that enum, and `sendly.webhooks.WEBHOOK_EVENT_TYPES` is the tuple of its values.
+
 ## Account & Credits
 
 ```python
