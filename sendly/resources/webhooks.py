@@ -17,6 +17,7 @@ from ..types import (
     WebhookTestResult,
 )
 from ..utils.http import AsyncHttpClient, HttpClient
+from urllib.parse import quote
 
 
 def _transform_webhook_response(data: Dict[str, Any]) -> Dict[str, Any]:
@@ -159,7 +160,7 @@ class WebhooksResource:
         if not webhook_id or not webhook_id.startswith("whk_"):
             raise ValueError("Invalid webhook ID format")
 
-        response = self._http.request("GET", f"/webhooks/{webhook_id}")
+        response = self._http.request("GET", f"/webhooks/{quote(webhook_id, safe='')}")
         return Webhook(**_transform_webhook_response(response))
 
     def update(
@@ -207,7 +208,7 @@ class WebhooksResource:
         if metadata is not None:
             body["metadata"] = metadata
 
-        response = self._http.request("PATCH", f"/webhooks/{webhook_id}", body=body)
+        response = self._http.request("PATCH", f"/webhooks/{quote(webhook_id, safe='')}", body=body)
         return Webhook(**_transform_webhook_response(response))
 
     def delete(self, webhook_id: str) -> None:
@@ -223,7 +224,7 @@ class WebhooksResource:
         if not webhook_id or not webhook_id.startswith("whk_"):
             raise ValueError("Invalid webhook ID format")
 
-        self._http.request("DELETE", f"/webhooks/{webhook_id}")
+        self._http.request("DELETE", f"/webhooks/{quote(webhook_id, safe='')}")
 
     def test(self, webhook_id: str) -> WebhookTestResult:
         """
@@ -238,7 +239,7 @@ class WebhooksResource:
         if not webhook_id or not webhook_id.startswith("whk_"):
             raise ValueError("Invalid webhook ID format")
 
-        response = self._http.request("POST", f"/webhooks/{webhook_id}/test")
+        response = self._http.request("POST", f"/webhooks/{quote(webhook_id, safe='')}/test")
         return WebhookTestResult(**response)
 
     def reset_circuit(self, webhook_id: str) -> dict:
@@ -257,7 +258,7 @@ class WebhooksResource:
         if not webhook_id or not webhook_id.startswith("whk_"):
             raise ValueError("Invalid webhook ID format")
 
-        return self._http.request("POST", f"/webhooks/{webhook_id}/reset-circuit")
+        return self._http.request("POST", f"/webhooks/{quote(webhook_id, safe='')}/reset-circuit")
 
     def redeliver(
         self,
@@ -309,7 +310,7 @@ class WebhooksResource:
             body["limit"] = limit
 
         return self._http.request(
-            "POST", f"/webhooks/{webhook_id}/redeliver", body=body or None
+            "POST", f"/webhooks/{quote(webhook_id, safe='')}/redeliver", body=body or None
         )
 
     def backfill(
@@ -361,7 +362,7 @@ class WebhooksResource:
             body["limit"] = limit
 
         return self._http.request(
-            "POST", f"/webhooks/{webhook_id}/backfill", body=body or None
+            "POST", f"/webhooks/{quote(webhook_id, safe='')}/backfill", body=body or None
         )
 
     def rotate_secret(self, webhook_id: str) -> WebhookSecretRotation:
@@ -379,7 +380,7 @@ class WebhooksResource:
         if not webhook_id or not webhook_id.startswith("whk_"):
             raise ValueError("Invalid webhook ID format")
 
-        response = self._http.request("POST", f"/webhooks/{webhook_id}/rotate-secret")
+        response = self._http.request("POST", f"/webhooks/{quote(webhook_id, safe='')}/rotate-secret")
         # Transform the nested webhook object
         if "webhook" in response:
             response["webhook"] = _transform_webhook_response(response["webhook"])
@@ -398,7 +399,7 @@ class WebhooksResource:
         if not webhook_id or not webhook_id.startswith("whk_"):
             raise ValueError("Invalid webhook ID format")
 
-        response = self._http.request("GET", f"/webhooks/{webhook_id}/deliveries")
+        response = self._http.request("GET", f"/webhooks/{quote(webhook_id, safe='')}/deliveries")
         return [WebhookDelivery(**_transform_delivery_response(d)) for d in response]
 
     def retry_delivery(self, webhook_id: str, delivery_id: str) -> None:
@@ -414,7 +415,7 @@ class WebhooksResource:
         if not delivery_id or not delivery_id.startswith("del_"):
             raise ValueError("Invalid delivery ID format")
 
-        self._http.request("POST", f"/webhooks/{webhook_id}/deliveries/{delivery_id}/retry")
+        self._http.request("POST", f"/webhooks/{quote(webhook_id, safe='')}/deliveries/{quote(delivery_id, safe='')}/retry")
 
     def list_event_types(self) -> List[str]:
         """
@@ -473,7 +474,7 @@ class AsyncWebhooksResource:
         if not webhook_id or not webhook_id.startswith("whk_"):
             raise ValueError("Invalid webhook ID format")
 
-        response = await self._http.request("GET", f"/webhooks/{webhook_id}")
+        response = await self._http.request("GET", f"/webhooks/{quote(webhook_id, safe='')}")
         return Webhook(**_transform_webhook_response(response))
 
     async def update(
@@ -507,7 +508,7 @@ class AsyncWebhooksResource:
         if metadata is not None:
             body["metadata"] = metadata
 
-        response = await self._http.request("PATCH", f"/webhooks/{webhook_id}", body=body)
+        response = await self._http.request("PATCH", f"/webhooks/{quote(webhook_id, safe='')}", body=body)
         return Webhook(**_transform_webhook_response(response))
 
     async def delete(self, webhook_id: str) -> None:
@@ -515,14 +516,14 @@ class AsyncWebhooksResource:
         if not webhook_id or not webhook_id.startswith("whk_"):
             raise ValueError("Invalid webhook ID format")
 
-        await self._http.request("DELETE", f"/webhooks/{webhook_id}")
+        await self._http.request("DELETE", f"/webhooks/{quote(webhook_id, safe='')}")
 
     async def test(self, webhook_id: str) -> WebhookTestResult:
         """Send a test event to a webhook endpoint."""
         if not webhook_id or not webhook_id.startswith("whk_"):
             raise ValueError("Invalid webhook ID format")
 
-        response = await self._http.request("POST", f"/webhooks/{webhook_id}/test")
+        response = await self._http.request("POST", f"/webhooks/{quote(webhook_id, safe='')}/test")
         return WebhookTestResult(**response)
 
     async def reset_circuit(self, webhook_id: str) -> dict:
@@ -530,7 +531,7 @@ class AsyncWebhooksResource:
         if not webhook_id or not webhook_id.startswith("whk_"):
             raise ValueError("Invalid webhook ID format")
 
-        return await self._http.request("POST", f"/webhooks/{webhook_id}/reset-circuit")
+        return await self._http.request("POST", f"/webhooks/{quote(webhook_id, safe='')}/reset-circuit")
 
     async def redeliver(
         self,
@@ -562,7 +563,7 @@ class AsyncWebhooksResource:
             body["limit"] = limit
 
         return await self._http.request(
-            "POST", f"/webhooks/{webhook_id}/redeliver", body=body or None
+            "POST", f"/webhooks/{quote(webhook_id, safe='')}/redeliver", body=body or None
         )
 
     async def backfill(
@@ -592,7 +593,7 @@ class AsyncWebhooksResource:
             body["limit"] = limit
 
         return await self._http.request(
-            "POST", f"/webhooks/{webhook_id}/backfill", body=body or None
+            "POST", f"/webhooks/{quote(webhook_id, safe='')}/backfill", body=body or None
         )
 
     async def rotate_secret(self, webhook_id: str) -> WebhookSecretRotation:
@@ -600,7 +601,7 @@ class AsyncWebhooksResource:
         if not webhook_id or not webhook_id.startswith("whk_"):
             raise ValueError("Invalid webhook ID format")
 
-        response = await self._http.request("POST", f"/webhooks/{webhook_id}/rotate-secret")
+        response = await self._http.request("POST", f"/webhooks/{quote(webhook_id, safe='')}/rotate-secret")
         if "webhook" in response:
             response["webhook"] = _transform_webhook_response(response["webhook"])
         return WebhookSecretRotation(**response)
@@ -610,7 +611,7 @@ class AsyncWebhooksResource:
         if not webhook_id or not webhook_id.startswith("whk_"):
             raise ValueError("Invalid webhook ID format")
 
-        response = await self._http.request("GET", f"/webhooks/{webhook_id}/deliveries")
+        response = await self._http.request("GET", f"/webhooks/{quote(webhook_id, safe='')}/deliveries")
         return [WebhookDelivery(**_transform_delivery_response(d)) for d in response]
 
     async def retry_delivery(self, webhook_id: str, delivery_id: str) -> None:
@@ -620,7 +621,7 @@ class AsyncWebhooksResource:
         if not delivery_id or not delivery_id.startswith("del_"):
             raise ValueError("Invalid delivery ID format")
 
-        await self._http.request("POST", f"/webhooks/{webhook_id}/deliveries/{delivery_id}/retry")
+        await self._http.request("POST", f"/webhooks/{quote(webhook_id, safe='')}/deliveries/{quote(delivery_id, safe='')}/retry")
 
     async def list_event_types(self) -> List[str]:
         """List available event types."""

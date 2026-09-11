@@ -1,3 +1,4 @@
+from urllib.parse import quote
 """
 RCS Resource - Register your agent, discover agents, pre-flight recipient capability
 
@@ -236,7 +237,7 @@ class RcsBrandsResource:
         )
         data = self._http.request(
             method="PATCH",
-            path=f"/rcs/brands/{id}",
+            path=f"/rcs/brands/{quote(id, safe='')}",
             body=body,
             idempotency_key=idempotency_key,
         )
@@ -332,7 +333,7 @@ class RcsAgentsResource:
         Args:
             id: Agent identifier.
         """
-        data = self._http.request(method="GET", path=f"/rcs/agents/{id}")
+        data = self._http.request(method="GET", path=f"/rcs/agents/{quote(id, safe='')}")
         return _parse(RcsAgentDetail, _unwrap(data, "agent"))
 
     def update(
@@ -385,7 +386,7 @@ class RcsAgentsResource:
         body = _agent_body(None, display_name, use_case, basics, campaign, testing)
         data = self._http.request(
             method="PATCH",
-            path=f"/rcs/agents/{id}",
+            path=f"/rcs/agents/{quote(id, safe='')}",
             body=body,
             idempotency_key=idempotency_key,
         )
@@ -418,7 +419,7 @@ class RcsAgentsResource:
         body = _devices_body(devices)
         data = self._http.request(
             method="PUT",
-            path=f"/rcs/agents/{id}/test-devices",
+            path=f"/rcs/agents/{quote(id, safe='')}/test-devices",
             body=body,
             idempotency_key=idempotency_key,
         )
@@ -443,7 +444,7 @@ class RcsAgentsResource:
         """
         data = self._http.request(
             method="POST",
-            path=f"/rcs/agents/{id}/submit",
+            path=f"/rcs/agents/{quote(id, safe='')}/submit",
             body={},
             idempotency_key=idempotency_key,
         )
@@ -480,7 +481,7 @@ class RcsAgentsResource:
         body = _launch_body(test_url, testing_additional_information)
         data = self._http.request(
             method="POST",
-            path=f"/rcs/agents/{id}/request-launch",
+            path=f"/rcs/agents/{quote(id, safe='')}/request-launch",
             body=body,
             idempotency_key=idempotency_key,
         )
@@ -638,7 +639,7 @@ class AsyncRcsBrandsResource:
         )
         data = await self._http.request(
             method="PATCH",
-            path=f"/rcs/brands/{id}",
+            path=f"/rcs/brands/{quote(id, safe='')}",
             body=body,
             idempotency_key=idempotency_key,
         )
@@ -679,7 +680,7 @@ class AsyncRcsAgentsResource:
 
     async def get(self, id: str) -> RcsAgentDetail:
         """Fetch one agent. See :meth:`RcsAgentsResource.get`."""
-        data = await self._http.request(method="GET", path=f"/rcs/agents/{id}")
+        data = await self._http.request(method="GET", path=f"/rcs/agents/{quote(id, safe='')}")
         return _parse(RcsAgentDetail, _unwrap(data, "agent"))
 
     async def update(
@@ -697,7 +698,7 @@ class AsyncRcsAgentsResource:
         body = _agent_body(None, display_name, use_case, basics, campaign, testing)
         data = await self._http.request(
             method="PATCH",
-            path=f"/rcs/agents/{id}",
+            path=f"/rcs/agents/{quote(id, safe='')}",
             body=body,
             idempotency_key=idempotency_key,
         )
@@ -715,7 +716,7 @@ class AsyncRcsAgentsResource:
         body = _devices_body(devices)
         data = await self._http.request(
             method="PUT",
-            path=f"/rcs/agents/{id}/test-devices",
+            path=f"/rcs/agents/{quote(id, safe='')}/test-devices",
             body=body,
             idempotency_key=idempotency_key,
         )
@@ -728,7 +729,7 @@ class AsyncRcsAgentsResource:
         See :meth:`RcsAgentsResource.submit`."""
         data = await self._http.request(
             method="POST",
-            path=f"/rcs/agents/{id}/submit",
+            path=f"/rcs/agents/{quote(id, safe='')}/submit",
             body={},
             idempotency_key=idempotency_key,
         )
@@ -746,7 +747,7 @@ class AsyncRcsAgentsResource:
         body = _launch_body(test_url, testing_additional_information)
         data = await self._http.request(
             method="POST",
-            path=f"/rcs/agents/{id}/request-launch",
+            path=f"/rcs/agents/{quote(id, safe='')}/request-launch",
             body=body,
             idempotency_key=idempotency_key,
         )

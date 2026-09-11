@@ -6,6 +6,7 @@ from typing import Any, Dict, List, Optional
 
 from ..types import GeneratedTemplate, Template, TemplateListResponse, TemplatePreview
 from ..utils.http import AsyncHttpClient, HttpClient
+from urllib.parse import quote
 
 
 class TemplatesResource:
@@ -30,7 +31,7 @@ class TemplatesResource:
 
     def get(self, template_id: str) -> Template:
         """Get a template by ID"""
-        data = self._http.request("GET", f"/templates/{template_id}")
+        data = self._http.request("GET", f"/templates/{quote(template_id, safe='')}")
         return self._transform_template(data)
 
     def create(self, name: str, text: str) -> Template:
@@ -52,12 +53,12 @@ class TemplatesResource:
         if text:
             body["text"] = text
 
-        data = self._http.request("PATCH", f"/templates/{template_id}", body=body)
+        data = self._http.request("PATCH", f"/templates/{quote(template_id, safe='')}", body=body)
         return self._transform_template(data)
 
     def publish(self, template_id: str) -> Template:
         """Publish a draft template"""
-        data = self._http.request("POST", f"/templates/{template_id}/publish")
+        data = self._http.request("POST", f"/templates/{quote(template_id, safe='')}/publish")
         return self._transform_template(data)
 
     def preview(
@@ -65,7 +66,7 @@ class TemplatesResource:
     ) -> TemplatePreview:
         """Preview a template with sample values"""
         body = {"variables": variables} if variables else {}
-        data = self._http.request("POST", f"/templates/{template_id}/preview", body=body)
+        data = self._http.request("POST", f"/templates/{quote(template_id, safe='')}/preview", body=body)
         return TemplatePreview(
             id=data["id"],
             name=data["name"],
@@ -76,7 +77,7 @@ class TemplatesResource:
 
     def delete(self, template_id: str) -> None:
         """Delete a template"""
-        self._http.request("DELETE", f"/templates/{template_id}")
+        self._http.request("DELETE", f"/templates/{quote(template_id, safe='')}")
 
     def clone(self, template_id: str, name: Optional[str] = None) -> Template:
         """Clone a template
@@ -86,7 +87,7 @@ class TemplatesResource:
             name: Optional new name for the cloned template
         """
         body = {"name": name} if name else {}
-        data = self._http.request("POST", f"/templates/{template_id}/clone", body=body)
+        data = self._http.request("POST", f"/templates/{quote(template_id, safe='')}/clone", body=body)
         return self._transform_template(data)
 
     def generate(
@@ -136,7 +137,7 @@ class AsyncTemplatesResource:
 
     async def get(self, template_id: str) -> Template:
         """Get a template by ID"""
-        data = await self._http.request("GET", f"/templates/{template_id}")
+        data = await self._http.request("GET", f"/templates/{quote(template_id, safe='')}")
         return self._transform_template(data)
 
     async def create(self, name: str, text: str) -> Template:
@@ -158,12 +159,12 @@ class AsyncTemplatesResource:
         if text:
             body["text"] = text
 
-        data = await self._http.request("PATCH", f"/templates/{template_id}", body=body)
+        data = await self._http.request("PATCH", f"/templates/{quote(template_id, safe='')}", body=body)
         return self._transform_template(data)
 
     async def publish(self, template_id: str) -> Template:
         """Publish a draft template"""
-        data = await self._http.request("POST", f"/templates/{template_id}/publish")
+        data = await self._http.request("POST", f"/templates/{quote(template_id, safe='')}/publish")
         return self._transform_template(data)
 
     async def preview(
@@ -171,7 +172,7 @@ class AsyncTemplatesResource:
     ) -> TemplatePreview:
         """Preview a template with sample values"""
         body = {"variables": variables} if variables else {}
-        data = await self._http.request("POST", f"/templates/{template_id}/preview", body=body)
+        data = await self._http.request("POST", f"/templates/{quote(template_id, safe='')}/preview", body=body)
         return TemplatePreview(
             id=data["id"],
             name=data["name"],
@@ -182,12 +183,12 @@ class AsyncTemplatesResource:
 
     async def delete(self, template_id: str) -> None:
         """Delete a template"""
-        await self._http.request("DELETE", f"/templates/{template_id}")
+        await self._http.request("DELETE", f"/templates/{quote(template_id, safe='')}")
 
     async def clone(self, template_id: str, name: Optional[str] = None) -> Template:
         """Clone a template"""
         body = {"name": name} if name else {}
-        data = await self._http.request("POST", f"/templates/{template_id}/clone", body=body)
+        data = await self._http.request("POST", f"/templates/{quote(template_id, safe='')}/clone", body=body)
         return self._transform_template(data)
 
     async def generate(

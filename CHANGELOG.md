@@ -1,5 +1,159 @@
 # sendly (Python)
 
+## 4.0.0
+
+**Upgrading from 3.40.0:** that release already contained the breaking changes below, published by mistake as a minor version. 4.0.0 carries them under the correct major. Relative to 3.40.0, the only new changes are under **Security**.
+
+Webhook events are no longer decoded as messages. Every SDK used to force a webhook's
+`data.object` into a message-shaped type. That is correct for `message.*` and wrong for
+every lifecycle event — `rcs_*`, `whatsapp_*`, `call.*`, `brand.*`, `campaign.*`,
+`assignment.*`, `number.*`, `port*`, `contact*`, `conversation.*`, `draft.*`,
+`verification.*` — which carry a different object entirely. This release exposes the payload
+as it arrived and makes the wrong read fail instead of returning a plausible-looking zero.
+
+### Breaking Changes
+
+- **`event.data` is now `None` for every event that is not a `message.*` event.** It used to
+  be a fully-populated `WebhookMessageData` whatever arrived, assembled by reading message
+  field names off a payload that never carried them. Parsing an `rcs_agent.live` event
+  returned `id=''`, `status=''`, `to=''`, `from_=''`, `segments=1`, `credits_used=0`,
+  `direction='outbound'` — every one of those invented by the SDK — and **raised no error**.
+  A handler that logged `event.data.credits_used` recorded a `0` that meant nothing, and a
+  handler that branched on `event.data.status` took the empty-string branch forever.
+
+  Reading a message field off a lifecycle event now raises
+  `AttributeError: 'NoneType' object has no attribute 'id'`. **That is the point of this
+  release, not an accident.** The read was always wrong; it is now loud instead of silent,
+  so you find every affected call site the first time such an event arrives rather than
+  trusting a zero indefinitely.
+
+  Your code today, on any non-`message.*` event:
+
+  ```python
+  event = Webhooks.parse_event(payload, signature, WEBHOOK_SECRET, timestamp=timestamp)
+
+  if event.type == 'rcs_agent.live':
+      agent_id = event.data.id        # was always '' - the payload has no `id` at all
+      stage = event.data.status       # was always ''
+  ```
+
+  After upgrading, that raises. Read the payload off `event.object`, which carries
+  `data.object` verbatim:
+
+  ```python
+  event = Webhooks.parse_event(payload, signature, WEBHOOK_SECRET, timestamp=timestamp)
+
+  if event.type == 'rcs_agent.live':
+      agent_id = event.object['agent_id']
+      stage = event.object['stage']
+  ```
+
+  The edit is mechanical: on a lifecycle event, every `event.data.<field>` becomes
+  `event.object['<key>']`, with the key spelled the way the API sends it rather than the way
+  `WebhookMessageData` spelled it. There was no `event.object` before this release, so no
+  correct version of this code existed to migrate from — check what your handler assumed
+  rather than translating it field for field.
+
+  If a handler touches `event.data` in several branches, guard the message-only path once.
+  `if event.data is not None:` both narrows the type for a checker and marks the branch:
+
+  ```python
+  if event.data is not None:
+      record_delivery(event.data.id, event.data.status)
+  else:
+      handle_lifecycle(event.type, event.object)
+  ```
+
+  `message.*` handlers otherwise need no change: `event.data` is still the message view
+  there.
+
+- **`contact.auto_flagged` reported the wrong id, and code keyed on it acted on the wrong
+  record.** The payload is a contact — `{id, phone_number, invalid_reason, source,
+  message_id, error_code}` — so the old decode put the *contact* id in `event.data.id`, and
+  `event.data.message_id` (an alias for `id`) returned that same contact id. The message
+  that actually failed was unreachable. If you wrote `mark_bounced(event.data.id)`, it has
+  been handing a contact id to something that expects a message id:
+
+  ```python
+  # before - `event.data.id` is the CONTACT id, `event.data.message_id` is the same value
+  if event.type == 'contact.auto_flagged':
+      mark_bounced(event.data.id)
+
+  # after - the two ids are distinct and never swapped
+  if event.type == 'contact.auto_flagged':
+      flag_contact(event.object['id'])
+      mark_bounced(event.object['message_id'])
+  ```
+
+  Audit anything this handler wrote before you upgrade; the bad writes are already on disk.
+
+- **`message.opt_in` and `message.opt_out` also return `event.data is None`.** They share the
+  `message.` prefix but carry an opt-out record (`phone_number`, `keyword`, `from_number`,
+  `timestamp`), not a message, so the old decode produced an all-default message here too.
+  Read them from `event.object`. Use `is_message_event(event.type)` rather than testing the
+  prefix yourself — it knows about these two.
+
+- **`WebhookEventType` is an enum, not a `Literal` union.** `sendly.webhooks` used to define
+  its own `Literal[...]` of event-type strings, drifting from the `WebhookEventType` enum in
+  `sendly.types`. There is now one definition: `sendly.webhooks.WebhookEventType` re-exports
+  the enum, and `sendly.webhooks.WEBHOOK_EVENT_TYPES` is the tuple of its values. Runtime
+  comparisons are unaffected (it is a `str` enum, so `event.type == 'message.delivered'` and
+  `event.type == WebhookEventType.MESSAGE_DELIVERED` are both `True`), but an annotation like
+  `event_type: WebhookEventType = 'message.delivered'` no longer type-checks. Use
+  `WebhookEventType.MESSAGE_DELIVERED`, or annotate as `str`.
+
+- **`message.queued` and `message.undelivered` are gone.** The API has never emitted either
+  one and rejects both with a `400` on subscribe, so any `events` list containing them was
+  subscribing to nothing and any handler branch on them was dead. They are no longer in
+  `WebhookEventType` or `WEBHOOK_EVENT_TYPES`; `WebhookEventType.MESSAGE_QUEUED` now raises
+  `AttributeError`. Delete them from your `webhooks.create()` / `webhooks.update()` calls.
+  `'queued'` and `'undelivered'` are still valid message *statuses* on `event.data.status` —
+  only the event types were removed.
+
+- **`WebhookMessageData` fields no longer carry invented defaults.** Every field is now
+  `Optional` and defaults to `None`. On a `message.*` payload that omitted a key you used to
+  get `''` for `id` / `status` / `to` / `from_`, `1` for `segments`, `0` for `credits_used`
+  and `'outbound'` for `direction`; you now get `None`, so an absent value is
+  distinguishable from a real one. Code that did `if not event.data.to:` still works; code
+  that did `event.data.to.startswith('+')` or `event.data.segments + 1` unguarded will now
+  raise on a sparse payload. `WebhookVerificationData` lost its invented defaults the same
+  way (`delivery_status='queued'`, `attempts=0`, `max_attempts=3` are all `None` now).
+
+### Minor Changes
+
+- **`event.object`** — `data.object` exactly as it arrived, on every event type. Keys are
+  verbatim (`camelCase` stays `camelCase`), JSON `null` stays `None`, and nothing the payload
+  did not carry is added. `event.raw_object` is an alias for it.
+- **`event.object_as(cls)`** — decode the payload into a shape of your own: a dataclass, a
+  pydantic v2 model, or `dict`. `event.object_as()` with no argument returns a plain dict
+  copy. Only keys the payload actually carried are passed through, so a field it did not send
+  keeps its default rather than being invented, and a trailing underscore maps a reserved
+  word (`from_` reads `from`).
+- **`is_message_event(event_type)`** — whether an event type carries a message-shaped
+  `data.object`. Takes a `WebhookEventType` or a raw string, including one this SDK version
+  has never heard of.
+- **`WebhookVerificationData`** — a ready-made shape for `verification.*` payloads.
+  `parse_event()` does not produce it for you; pass it to
+  `event.object_as(WebhookVerificationData)` when you want it.
+- **An event type this SDK version does not know is delivered, not rejected.** `event.type`
+  keeps the raw string and `event.object` still carries the payload, so a new event released
+  after this version reaches your handler.
+- `WebhookEventType` gains the types that were missing everywhere: `conversation.*`,
+  `draft.*`, `rcs_brand.*`, `rcs_agent.*`, `whatsapp_account.*`, `whatsapp_template.*` and
+  `call.*`. There was previously no typed way to subscribe to RCS, WhatsApp or voice events.
+
+### Patch Changes
+
+- A `data.object` that is not a JSON object now fails with a message that says so —
+  `Failed to parse webhook payload: Invalid event structure: data.object must be an object,
+  got str` — instead of surfacing an internal `'str' object has no attribute 'get'`. It
+  raised before too; only the message changed.
+
+
+### Security
+
+- **Path parameters are percent-encoded.** Every id you pass is now encoded (`urllib.parse.quote(..., safe="")`) before it goes into the request path. An id containing `/`, `?` or `#` used to change which endpoint the request reached: an id of `../../account/keys` left its collection and hit another endpoint carrying your API key. Ordinary ids are sent byte-for-byte as before.
+
 ## 3.38.0
 
 ### Minor Changes

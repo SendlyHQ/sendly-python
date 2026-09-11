@@ -33,6 +33,7 @@ from ..types import (
     TenDlcQualifyResponse,
 )
 from ..utils.http import AsyncHttpClient, HttpClient
+from urllib.parse import quote
 
 
 class TenDlcResource:
@@ -144,7 +145,7 @@ class TenDlcResource:
         Args:
             id: Brand identifier.
         """
-        data = self._http.request(method="GET", path=f"/tendlc/brands/{id}")
+        data = self._http.request(method="GET", path=f"/tendlc/brands/{quote(id, safe='')}")
         try:
             return TenDlcBrandResponse(**data)
         except PydanticValidationError as e:
@@ -160,7 +161,7 @@ class TenDlcResource:
                 ``ACCOUNT_NOTIFICATION``, ``2FA``).
         """
         data = self._http.request(
-            method="GET", path=f"/tendlc/brands/{brand_id}/qualify/{use_case}"
+            method="GET", path=f"/tendlc/brands/{quote(brand_id, safe='')}/qualify/{quote(use_case, safe='')}"
         )
         try:
             return TenDlcQualifyResponse(**data)
@@ -247,7 +248,7 @@ class TenDlcResource:
         Args:
             id: Campaign identifier.
         """
-        data = self._http.request(method="GET", path=f"/tendlc/campaigns/{id}")
+        data = self._http.request(method="GET", path=f"/tendlc/campaigns/{quote(id, safe='')}")
         try:
             return TenDlcCampaignResponse(**data)
         except PydanticValidationError as e:
@@ -266,7 +267,7 @@ class TenDlcResource:
         """
         data = self._http.request(
             method="POST",
-            path=f"/tendlc/campaigns/{campaign_id}/assign",
+            path=f"/tendlc/campaigns/{quote(campaign_id, safe='')}/assign",
             body={"phoneNumber": phone_number},
         )
         try:
@@ -342,7 +343,7 @@ class AsyncTenDlcResource:
 
     async def get_brand(self, id: str) -> TenDlcBrandResponse:
         """Fetch one brand with its current carrier-review status."""
-        data = await self._http.request(method="GET", path=f"/tendlc/brands/{id}")
+        data = await self._http.request(method="GET", path=f"/tendlc/brands/{quote(id, safe='')}")
         try:
             return TenDlcBrandResponse(**data)
         except PydanticValidationError as e:
@@ -351,7 +352,7 @@ class AsyncTenDlcResource:
     async def qualify(self, brand_id: str, use_case: str) -> TenDlcQualifyResponse:
         """Pre-check whether a use case qualifies for a brand on the carrier network."""
         data = await self._http.request(
-            method="GET", path=f"/tendlc/brands/{brand_id}/qualify/{use_case}"
+            method="GET", path=f"/tendlc/brands/{quote(brand_id, safe='')}/qualify/{quote(use_case, safe='')}"
         )
         try:
             return TenDlcQualifyResponse(**data)
@@ -409,7 +410,7 @@ class AsyncTenDlcResource:
 
     async def get_campaign(self, id: str) -> TenDlcCampaignResponse:
         """Fetch one campaign with its current carrier-review status."""
-        data = await self._http.request(method="GET", path=f"/tendlc/campaigns/{id}")
+        data = await self._http.request(method="GET", path=f"/tendlc/campaigns/{quote(id, safe='')}")
         try:
             return TenDlcCampaignResponse(**data)
         except PydanticValidationError as e:
@@ -421,7 +422,7 @@ class AsyncTenDlcResource:
         """Assign a number to an active campaign. See :meth:`TenDlcResource.assign_number`."""
         data = await self._http.request(
             method="POST",
-            path=f"/tendlc/campaigns/{campaign_id}/assign",
+            path=f"/tendlc/campaigns/{quote(campaign_id, safe='')}/assign",
             body={"phoneNumber": phone_number},
         )
         try:

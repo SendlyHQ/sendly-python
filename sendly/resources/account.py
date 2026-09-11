@@ -8,6 +8,7 @@ from typing import Any, Dict, List, Optional
 
 from ..types import Account, ApiKey, Credits, CreditTransaction
 from ..utils.http import AsyncHttpClient, HttpClient
+from urllib.parse import quote
 
 
 def _transform_response(data: Dict[str, Any], key_map: Dict[str, str]) -> Dict[str, Any]:
@@ -141,7 +142,7 @@ class AccountResource:
         Returns:
             API key details
         """
-        response = self._http.request("GET", f"/account/keys/{key_id}")
+        response = self._http.request("GET", f"/account/keys/{quote(key_id, safe='')}")
         return ApiKey(**_transform_response(response, API_KEY_MAP))
 
     def get_api_key_usage(self, key_id: str) -> Dict[str, Any]:
@@ -154,7 +155,7 @@ class AccountResource:
         Returns:
             Usage statistics
         """
-        response = self._http.request("GET", f"/account/keys/{key_id}/usage")
+        response = self._http.request("GET", f"/account/keys/{quote(key_id, safe='')}/usage")
         return response
 
     def create_api_key(self, name: str, expires_at: Optional[str] = None) -> Dict[str, Any]:
@@ -192,7 +193,7 @@ class AccountResource:
         if not key_id:
             raise ValueError("API key ID is required")
 
-        self._http.request("PATCH", f"/account/keys/{key_id}/revoke", body={})
+        self._http.request("PATCH", f"/account/keys/{quote(key_id, safe='')}/revoke", body={})
 
     def rotate_api_key(
         self, key_id: str, grace_period_hours: Optional[int] = None
@@ -228,7 +229,7 @@ class AccountResource:
                 raise ValueError("grace_period_hours must be between 24 and 168")
             body["gracePeriodHours"] = grace_period_hours
 
-        return self._http.request("POST", f"/account/keys/{key_id}/rotate", body=body)
+        return self._http.request("POST", f"/account/keys/{quote(key_id, safe='')}/rotate", body=body)
 
 
 class AsyncAccountResource:
@@ -284,12 +285,12 @@ class AsyncAccountResource:
 
     async def get_api_key(self, key_id: str) -> ApiKey:
         """Get a specific API key by ID."""
-        response = await self._http.request("GET", f"/account/keys/{key_id}")
+        response = await self._http.request("GET", f"/account/keys/{quote(key_id, safe='')}")
         return ApiKey(**_transform_response(response, API_KEY_MAP))
 
     async def get_api_key_usage(self, key_id: str) -> Dict[str, Any]:
         """Get usage statistics for an API key."""
-        response = await self._http.request("GET", f"/account/keys/{key_id}/usage")
+        response = await self._http.request("GET", f"/account/keys/{quote(key_id, safe='')}/usage")
         return response
 
     async def create_api_key(self, name: str, expires_at: Optional[str] = None) -> Dict[str, Any]:
@@ -323,7 +324,7 @@ class AsyncAccountResource:
         if not key_id:
             raise ValueError("API key ID is required")
 
-        await self._http.request("PATCH", f"/account/keys/{key_id}/revoke", body={})
+        await self._http.request("PATCH", f"/account/keys/{quote(key_id, safe='')}/revoke", body={})
 
     async def rotate_api_key(
         self, key_id: str, grace_period_hours: Optional[int] = None
@@ -355,5 +356,5 @@ class AsyncAccountResource:
             body["gracePeriodHours"] = grace_period_hours
 
         return await self._http.request(
-            "POST", f"/account/keys/{key_id}/rotate", body=body
+            "POST", f"/account/keys/{quote(key_id, safe='')}/rotate", body=body
         )

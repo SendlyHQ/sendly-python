@@ -14,6 +14,7 @@ from ..types import (
     ImportContactsResponse,
 )
 from ..utils.http import AsyncHttpClient, HttpClient
+from urllib.parse import quote
 
 
 class ContactListsResource:
@@ -41,7 +42,7 @@ class ContactListsResource:
             params["offset"] = offset
 
         data = self._http.request(
-            "GET", f"/contact-lists/{list_id}", params=params if params else None
+            "GET", f"/contact-lists/{quote(list_id, safe='')}", params=params if params else None
         )
         return self._transform_list(data)
 
@@ -68,12 +69,12 @@ class ContactListsResource:
         if description is not None:
             body["description"] = description
 
-        data = self._http.request("PATCH", f"/contact-lists/{list_id}", body=body)
+        data = self._http.request("PATCH", f"/contact-lists/{quote(list_id, safe='')}", body=body)
         return self._transform_list(data)
 
     def delete(self, list_id: str) -> None:
         """Delete a contact list (does not delete the contacts)"""
-        self._http.request("DELETE", f"/contact-lists/{list_id}")
+        self._http.request("DELETE", f"/contact-lists/{quote(list_id, safe='')}")
 
     def add_contacts(self, list_id: str, contact_ids: List[str]) -> Dict[str, int]:
         """Add contacts to a list
@@ -83,14 +84,14 @@ class ContactListsResource:
         """
         data = self._http.request(
             "POST",
-            f"/contact-lists/{list_id}/contacts",
+            f"/contact-lists/{quote(list_id, safe='')}/contacts",
             body={"contact_ids": contact_ids},
         )
         return {"added_count": data["added_count"]}
 
     def remove_contact(self, list_id: str, contact_id: str) -> None:
         """Remove a contact from a list"""
-        self._http.request("DELETE", f"/contact-lists/{list_id}/contacts/{contact_id}")
+        self._http.request("DELETE", f"/contact-lists/{quote(list_id, safe='')}/contacts/{quote(contact_id, safe='')}")
 
     def _transform_list(self, data: Dict[str, Any]) -> ContactList:
         contacts = None
@@ -168,7 +169,7 @@ class ContactsResource:
 
     def get(self, contact_id: str) -> Contact:
         """Get a contact by ID"""
-        data = self._http.request("GET", f"/contacts/{contact_id}")
+        data = self._http.request("GET", f"/contacts/{quote(contact_id, safe='')}")
         return self._transform_contact(data)
 
     def create(
@@ -214,12 +215,12 @@ class ContactsResource:
         if metadata is not None:
             body["metadata"] = metadata
 
-        data = self._http.request("PATCH", f"/contacts/{contact_id}", body=body)
+        data = self._http.request("PATCH", f"/contacts/{quote(contact_id, safe='')}", body=body)
         return self._transform_contact(data)
 
     def delete(self, contact_id: str) -> None:
         """Delete a contact"""
-        self._http.request("DELETE", f"/contacts/{contact_id}")
+        self._http.request("DELETE", f"/contacts/{quote(contact_id, safe='')}")
 
     def mark_valid(self, contact_id: str) -> Contact:
         """Clear the invalid flag on a contact so future campaigns include it again.
@@ -229,7 +230,7 @@ class ContactsResource:
         reports they can't receive SMS. Use this when you disagree with the
         auto-flag — e.g. the recipient ported from a landline to mobile.
         """
-        data = self._http.request("POST", f"/contacts/{contact_id}/mark-valid")
+        data = self._http.request("POST", f"/contacts/{quote(contact_id, safe='')}/mark-valid")
         return self._transform_contact(data)
 
     def bulk_mark_valid(
@@ -369,7 +370,7 @@ class AsyncContactListsResource:
             params["offset"] = offset
 
         data = await self._http.request(
-            "GET", f"/contact-lists/{list_id}", params=params if params else None
+            "GET", f"/contact-lists/{quote(list_id, safe='')}", params=params if params else None
         )
         return self._transform_list(data)
 
@@ -396,25 +397,25 @@ class AsyncContactListsResource:
         if description is not None:
             body["description"] = description
 
-        data = await self._http.request("PATCH", f"/contact-lists/{list_id}", body=body)
+        data = await self._http.request("PATCH", f"/contact-lists/{quote(list_id, safe='')}", body=body)
         return self._transform_list(data)
 
     async def delete(self, list_id: str) -> None:
         """Delete a contact list (does not delete the contacts)"""
-        await self._http.request("DELETE", f"/contact-lists/{list_id}")
+        await self._http.request("DELETE", f"/contact-lists/{quote(list_id, safe='')}")
 
     async def add_contacts(self, list_id: str, contact_ids: List[str]) -> Dict[str, int]:
         """Add contacts to a list"""
         data = await self._http.request(
             "POST",
-            f"/contact-lists/{list_id}/contacts",
+            f"/contact-lists/{quote(list_id, safe='')}/contacts",
             body={"contact_ids": contact_ids},
         )
         return {"added_count": data["added_count"]}
 
     async def remove_contact(self, list_id: str, contact_id: str) -> None:
         """Remove a contact from a list"""
-        await self._http.request("DELETE", f"/contact-lists/{list_id}/contacts/{contact_id}")
+        await self._http.request("DELETE", f"/contact-lists/{quote(list_id, safe='')}/contacts/{quote(contact_id, safe='')}")
 
     def _transform_list(self, data: Dict[str, Any]) -> ContactList:
         contacts = None
@@ -476,7 +477,7 @@ class AsyncContactsResource:
 
     async def get(self, contact_id: str) -> Contact:
         """Get a contact by ID"""
-        data = await self._http.request("GET", f"/contacts/{contact_id}")
+        data = await self._http.request("GET", f"/contacts/{quote(contact_id, safe='')}")
         return self._transform_contact(data)
 
     async def create(
@@ -515,16 +516,16 @@ class AsyncContactsResource:
         if metadata is not None:
             body["metadata"] = metadata
 
-        data = await self._http.request("PATCH", f"/contacts/{contact_id}", body=body)
+        data = await self._http.request("PATCH", f"/contacts/{quote(contact_id, safe='')}", body=body)
         return self._transform_contact(data)
 
     async def delete(self, contact_id: str) -> None:
         """Delete a contact"""
-        await self._http.request("DELETE", f"/contacts/{contact_id}")
+        await self._http.request("DELETE", f"/contacts/{quote(contact_id, safe='')}")
 
     async def mark_valid(self, contact_id: str) -> Contact:
         """Clear the invalid flag on a contact (async)."""
-        data = await self._http.request("POST", f"/contacts/{contact_id}/mark-valid")
+        data = await self._http.request("POST", f"/contacts/{quote(contact_id, safe='')}/mark-valid")
         return self._transform_contact(data)
 
     async def bulk_mark_valid(

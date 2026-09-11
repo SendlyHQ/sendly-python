@@ -28,7 +28,7 @@ T = TypeVar("T")
 DEFAULT_BASE_URL = "https://sendly.live/api/v1"
 DEFAULT_TIMEOUT = 30.0
 DEFAULT_MAX_RETRIES = 3
-SDK_VERSION = "3.40.0"
+SDK_VERSION = "4.0.0"
 
 
 class HttpClient:

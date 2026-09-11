@@ -344,7 +344,7 @@ client.webhooks.delete('whk_xxx')
 ### Verifying Webhook Signatures
 
 ```python
-from sendly import Webhooks
+from sendly import Webhooks, WebhookSignatureError
 
 WEBHOOK_SECRET = 'your_webhook_secret'
 
@@ -357,16 +357,19 @@ def handle_webhook():
 
     try:
         event = Webhooks.parse_event(payload, signature, WEBHOOK_SECRET, timestamp=timestamp)
-
-        if event.type == 'message.delivered':
-            print(f'Message {event.data.id} delivered')
-        elif event.type == 'message.failed':
-            print(f'Message {event.data.id} failed: {event.data.error_code}')
-
-        return 'OK', 200
-    except Exception as e:
+    except WebhookSignatureError as e:
         print(f'Invalid signature: {e}')
         return 'Invalid signature', 400
+
+    if event.type == 'message.delivered':
+        print(f'Message {event.data.id} delivered')
+    elif event.type == 'message.failed':
+        print(f'Message {event.data.id} failed: {event.data.error_code}')
+    elif event.type == 'rcs_agent.live':
+        # A lifecycle event: event.data is None, the payload is on event.object
+        print(f"Agent {event.object['agent_id']} is live")
+
+    return 'OK', 200
 ```
 
 ### Reading the Event Payload
@@ -379,11 +382,15 @@ nothing the payload did not carry is added.
 `message.*` event, because RCS, WhatsApp, voice (`call.*`), 10DLC
 (`brand.*` / `campaign.*` / `assignment.*`), `number.*`, `port*`, `contact*`,
 `conversation.*`, `draft.*` and `verification.*` payloads are not
-message-shaped.
+message-shaped. `message.opt_in` and `message.opt_out` are `None` too — they
+share the prefix but carry an opt-out record (`phone_number`, `keyword`,
+`from_number`, `timestamp`), not a message.
 
 ```python
 from dataclasses import dataclass
-from sendly import Webhooks
+from typing import Optional
+
+from sendly import Webhooks, is_message_event
 
 event = Webhooks.parse_event(payload, signature, WEBHOOK_SECRET, timestamp=timestamp)
 
@@ -393,6 +400,12 @@ if event.data is not None:
 else:
     # lifecycle event: read the raw object
     print(event.object)
+
+# is_message_event() answers the same question from an event type alone, before
+# you have an event in hand - filtering a subscription, routing a queue
+is_message_event('message.delivered')  # True
+is_message_event('rcs_agent.live')     # False
+is_message_event('message.opt_out')    # False - an opt-out record, not a message
 
 # A contact flagged by a send failure: `id` is the contact, `message_id` is
 # the message that failed. They are never swapped.
@@ -406,22 +419,35 @@ if event.type == 'call.started':
     # for PSTN legs, so treat them as optional rather than assuming either.
     caller = event.object.get('from')
 
-# Or decode into a shape of your own (dataclass, pydantic model, or dict)
+# Or decode into a shape of your own (dataclass, pydantic model, or dict).
+# Only keys the payload actually carried are passed through, so a field it did
+# not send keeps its default instead of being invented. A trailing underscore
+# maps a reserved word: `from_` reads `from`.
 @dataclass
 class AgentLive:
-    agent_id: str = None
-    name: str = None
-    stage: str = None
+    agent_id: Optional[str] = None
+    name: Optional[str] = None
+    stage: Optional[str] = None
 
 if event.type == 'rcs_agent.live':
     agent = event.object_as(AgentLive)
     print(agent.agent_id, agent.stage)
 
-raw = event.object_as()  # plain dict copy
+raw = event.object_as()      # plain dict copy
+same = event.raw_object      # alias for event.object
 ```
+
+`verification.*` payloads have a ready-made shape — pass `WebhookVerificationData` to
+`event.object_as()` rather than writing your own.
 
 Event types live in one place, `sendly.types.WebhookEventType`; `sendly.WebhookEventType`
 re-exports that enum, and `sendly.webhooks.WEBHOOK_EVENT_TYPES` is the tuple of its values.
+An event type this SDK version has not heard of is still delivered rather than rejected:
+`event.type` keeps the raw string and `event.object` still carries the payload.
+
+`message.queued` and `message.undelivered` are not in that enum. The API has never emitted
+either one and rejects both with a `400` on subscribe, so 4.0.0 removed them. `'queued'` and
+`'undelivered'` remain valid message *statuses* on `event.data.status`.
 
 ## Account & Credits
 

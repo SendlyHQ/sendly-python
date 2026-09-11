@@ -13,6 +13,7 @@ from ..types import (
     ValidateSessionResponse,
 )
 from ..utils.http import AsyncHttpClient, HttpClient
+from urllib.parse import quote
 
 
 class SessionsResource:
@@ -168,7 +169,7 @@ class VerifyResource:
 
     def resend(self, verification_id: str) -> SendVerificationResponse:
         """Resend an OTP verification code"""
-        data = self._http.request("POST", f"/verify/{verification_id}/resend")
+        data = self._http.request("POST", f"/verify/{quote(verification_id, safe='')}/resend")
         return SendVerificationResponse(
             id=data["id"],
             status=data["status"],
@@ -181,7 +182,7 @@ class VerifyResource:
 
     def check(self, verification_id: str, code: str) -> CheckVerificationResponse:
         """Check/verify an OTP code"""
-        data = self._http.request("POST", f"/verify/{verification_id}/check", body={"code": code})
+        data = self._http.request("POST", f"/verify/{quote(verification_id, safe='')}/check", body={"code": code})
         return CheckVerificationResponse(
             id=data["id"],
             status=data["status"],
@@ -192,7 +193,7 @@ class VerifyResource:
 
     def get(self, verification_id: str) -> Verification:
         """Get a verification by ID"""
-        data = self._http.request("GET", f"/verify/{verification_id}")
+        data = self._http.request("GET", f"/verify/{quote(verification_id, safe='')}")
         return Verification(
             id=data["id"],
             status=data["status"],
@@ -289,7 +290,7 @@ class AsyncVerifyResource:
 
     async def resend(self, verification_id: str) -> SendVerificationResponse:
         """Resend an OTP verification code"""
-        data = await self._http.request("POST", f"/verify/{verification_id}/resend")
+        data = await self._http.request("POST", f"/verify/{quote(verification_id, safe='')}/resend")
         return SendVerificationResponse(
             id=data["id"],
             status=data["status"],
@@ -303,7 +304,7 @@ class AsyncVerifyResource:
     async def check(self, verification_id: str, code: str) -> CheckVerificationResponse:
         """Check/verify an OTP code"""
         data = await self._http.request(
-            "POST", f"/verify/{verification_id}/check", body={"code": code}
+            "POST", f"/verify/{quote(verification_id, safe='')}/check", body={"code": code}
         )
         return CheckVerificationResponse(
             id=data["id"],
@@ -315,7 +316,7 @@ class AsyncVerifyResource:
 
     async def get(self, verification_id: str) -> Verification:
         """Get a verification by ID"""
-        data = await self._http.request("GET", f"/verify/{verification_id}")
+        data = await self._http.request("GET", f"/verify/{quote(verification_id, safe='')}")
         return Verification(
             id=data["id"],
             status=data["status"],

@@ -10,6 +10,7 @@ from ..types import (
     CampaignPreview,
 )
 from ..utils.http import AsyncHttpClient, HttpClient
+from urllib.parse import quote
 
 
 class CampaignsResource:
@@ -91,7 +92,7 @@ class CampaignsResource:
 
     def get(self, campaign_id: str) -> Campaign:
         """Get a campaign by ID"""
-        data = self._http.request("GET", f"/campaigns/{campaign_id}")
+        data = self._http.request("GET", f"/campaigns/{quote(campaign_id, safe='')}")
         return self._transform_campaign(data)
 
     def update(
@@ -114,19 +115,19 @@ class CampaignsResource:
         if contact_list_ids is not None:
             body["contactListIds"] = contact_list_ids
 
-        data = self._http.request("PATCH", f"/campaigns/{campaign_id}", body=body)
+        data = self._http.request("PATCH", f"/campaigns/{quote(campaign_id, safe='')}", body=body)
         return self._transform_campaign(data)
 
     def delete(self, campaign_id: str) -> None:
         """Delete a campaign (draft or cancelled only)"""
-        self._http.request("DELETE", f"/campaigns/{campaign_id}")
+        self._http.request("DELETE", f"/campaigns/{quote(campaign_id, safe='')}")
 
     def preview(self, campaign_id: str) -> CampaignPreview:
         """Preview campaign before sending
 
         Returns recipient count, credit estimate, and breakdown.
         """
-        data = self._http.request("GET", f"/campaigns/{campaign_id}/preview")
+        data = self._http.request("GET", f"/campaigns/{quote(campaign_id, safe='')}/preview")
         return CampaignPreview(
             id=data["id"],
             recipient_count=data["recipient_count"],
@@ -139,7 +140,7 @@ class CampaignsResource:
 
     def send(self, campaign_id: str) -> Campaign:
         """Send a campaign immediately"""
-        data = self._http.request("POST", f"/campaigns/{campaign_id}/send")
+        data = self._http.request("POST", f"/campaigns/{quote(campaign_id, safe='')}/send")
         return self._transform_campaign(data)
 
     def schedule(
@@ -159,17 +160,17 @@ class CampaignsResource:
         if timezone:
             body["timezone"] = timezone
 
-        data = self._http.request("POST", f"/campaigns/{campaign_id}/schedule", body=body)
+        data = self._http.request("POST", f"/campaigns/{quote(campaign_id, safe='')}/schedule", body=body)
         return self._transform_campaign(data)
 
     def cancel(self, campaign_id: str) -> Campaign:
         """Cancel a scheduled campaign"""
-        data = self._http.request("POST", f"/campaigns/{campaign_id}/cancel")
+        data = self._http.request("POST", f"/campaigns/{quote(campaign_id, safe='')}/cancel")
         return self._transform_campaign(data)
 
     def clone(self, campaign_id: str) -> Campaign:
         """Clone a campaign (creates new draft)"""
-        data = self._http.request("POST", f"/campaigns/{campaign_id}/clone")
+        data = self._http.request("POST", f"/campaigns/{quote(campaign_id, safe='')}/clone")
         return self._transform_campaign(data)
 
     def _transform_campaign(self, data: Dict[str, Any]) -> Campaign:
@@ -245,7 +246,7 @@ class AsyncCampaignsResource:
 
     async def get(self, campaign_id: str) -> Campaign:
         """Get a campaign by ID"""
-        data = await self._http.request("GET", f"/campaigns/{campaign_id}")
+        data = await self._http.request("GET", f"/campaigns/{quote(campaign_id, safe='')}")
         return self._transform_campaign(data)
 
     async def update(
@@ -268,16 +269,16 @@ class AsyncCampaignsResource:
         if contact_list_ids is not None:
             body["contactListIds"] = contact_list_ids
 
-        data = await self._http.request("PATCH", f"/campaigns/{campaign_id}", body=body)
+        data = await self._http.request("PATCH", f"/campaigns/{quote(campaign_id, safe='')}", body=body)
         return self._transform_campaign(data)
 
     async def delete(self, campaign_id: str) -> None:
         """Delete a campaign (draft or cancelled only)"""
-        await self._http.request("DELETE", f"/campaigns/{campaign_id}")
+        await self._http.request("DELETE", f"/campaigns/{quote(campaign_id, safe='')}")
 
     async def preview(self, campaign_id: str) -> CampaignPreview:
         """Preview campaign before sending"""
-        data = await self._http.request("GET", f"/campaigns/{campaign_id}/preview")
+        data = await self._http.request("GET", f"/campaigns/{quote(campaign_id, safe='')}/preview")
         return CampaignPreview(
             id=data["id"],
             recipient_count=data["recipient_count"],
@@ -290,7 +291,7 @@ class AsyncCampaignsResource:
 
     async def send(self, campaign_id: str) -> Campaign:
         """Send a campaign immediately"""
-        data = await self._http.request("POST", f"/campaigns/{campaign_id}/send")
+        data = await self._http.request("POST", f"/campaigns/{quote(campaign_id, safe='')}/send")
         return self._transform_campaign(data)
 
     async def schedule(
@@ -304,17 +305,17 @@ class AsyncCampaignsResource:
         if timezone:
             body["timezone"] = timezone
 
-        data = await self._http.request("POST", f"/campaigns/{campaign_id}/schedule", body=body)
+        data = await self._http.request("POST", f"/campaigns/{quote(campaign_id, safe='')}/schedule", body=body)
         return self._transform_campaign(data)
 
     async def cancel(self, campaign_id: str) -> Campaign:
         """Cancel a scheduled campaign"""
-        data = await self._http.request("POST", f"/campaigns/{campaign_id}/cancel")
+        data = await self._http.request("POST", f"/campaigns/{quote(campaign_id, safe='')}/cancel")
         return self._transform_campaign(data)
 
     async def clone(self, campaign_id: str) -> Campaign:
         """Clone a campaign (creates new draft)"""
-        data = await self._http.request("POST", f"/campaigns/{campaign_id}/clone")
+        data = await self._http.request("POST", f"/campaigns/{quote(campaign_id, safe='')}/clone")
         return self._transform_campaign(data)
 
     def _transform_campaign(self, data: Dict[str, Any]) -> Campaign:
