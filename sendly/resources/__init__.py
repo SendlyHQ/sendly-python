@@ -1,5 +1,6 @@
 """Sendly SDK Resources"""
 
+from .calls import AsyncCallsResource, CallsResource
 from .campaigns import AsyncCampaignsResource, CampaignsResource
 from .contacts import AsyncContactsResource, ContactsResource
 from .conversations import AsyncConversationsResource, ConversationsResource
@@ -17,6 +18,8 @@ from .verify import AsyncVerifyResource, VerifyResource
 from .whatsapp import AsyncWhatsAppResource, WhatsAppResource
 
 __all__ = [
+    "CallsResource",
+    "AsyncCallsResource",
     "CampaignsResource",
     "AsyncCampaignsResource",
     "ContactsResource",

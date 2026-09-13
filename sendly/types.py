@@ -2020,6 +2020,16 @@ class OwnedNumber(BaseModel):
         alias="scheduledReleaseAt",
         description="When the number is scheduled to be released; null if not scheduled",
     )
+    voice_enabled: Optional[bool] = Field(
+        default=None,
+        alias="voiceEnabled",
+        description="Whether the number can take and place phone calls",
+    )
+    voice_mode: Optional[str] = Field(
+        default=None,
+        alias="voiceMode",
+        description="none | ring_dashboard | agent - how the number answers calls",
+    )
 
     model_config = ConfigDict(populate_by_name=True)
 
@@ -3342,5 +3352,212 @@ class RcsRegistration(BaseModel):
         alias="usEligible",
         description="False only when something on file names a non-US country",
     )
+
+    model_config = ConfigDict(populate_by_name=True)
+
+
+# ============================================================================
+# Voice calls
+# ============================================================================
+
+
+class CallStatus(str, Enum):
+    """Where a call is in its life. ``ringing`` and ``active`` are live; the
+    rest are terminal. ``suspended`` can appear on an internal call whose
+    media dropped and may recover."""
+
+    RINGING = "ringing"
+    ACTIVE = "active"
+    COMPLETED = "completed"
+    NO_ANSWER = "no_answer"
+    BUSY = "busy"
+    CANCELLED = "cancelled"
+    DECLINED = "declined"
+    FAILED = "failed"
+    SUSPENDED = "suspended"
+
+
+class CallDirection(str, Enum):
+    """Who placed the call"""
+
+    INBOUND = "inbound"
+    OUTBOUND = "outbound"
+
+
+class CallKind(str, Enum):
+    """``pstn`` is a phone call; ``internal`` is browser-to-browser between
+    teammates."""
+
+    PSTN = "pstn"
+    INTERNAL = "internal"
+
+
+class CallHandledBy(str, Enum):
+    """Who answered: an AI agent or the team in the dashboard"""
+
+    AGENT = "agent"
+    DASHBOARD = "dashboard"
+
+
+class CallBilling(str, Enum):
+    """``metered`` while a phone call is charged per minute, ``settled`` once
+    it has ended, ``unbilled`` for calls that were never charged (internal
+    calls, rows from before metering)."""
+
+    METERED = "metered"
+    SETTLED = "settled"
+    UNBILLED = "unbilled"
+
+
+class CallRecordingStatus(str, Enum):
+    """State of the call's recording; ``recording_status`` on a call is None
+    when nothing was recorded."""
+
+    RECORDING = "recording"
+    READY = "ready"
+    FAILED = "failed"
+
+
+class CallTranscriptLine(BaseModel):
+    """One line of an agent-handled call's transcript"""
+
+    speaker: str = Field(..., description="caller | agent")
+    text: str = Field(..., description="What was said")
+    at_ms: int = Field(..., alias="atMs", description="Milliseconds since the call was answered")
+
+    model_config = ConfigDict(populate_by_name=True)
+
+
+class Call(BaseModel):
+    """A phone call or a browser-to-browser call in the workspace"""
+
+    id: str = Field(..., description="Unique call identifier")
+    object: str = Field(default="call", description="Always 'call'")
+    kind: str = Field(..., description="pstn | internal (see CallKind)")
+    direction: str = Field(..., description="inbound | outbound (see CallDirection)")
+    status: str = Field(..., description="Call status (see CallStatus)")
+    handled_by: str = Field(
+        ..., alias="handledBy", description="agent | dashboard (see CallHandledBy)"
+    )
+    agent_id: Optional[str] = Field(
+        default=None, alias="agentId", description="The AI agent on the call, when there is one"
+    )
+    from_: Optional[str] = Field(
+        default=None, alias="from", description="Calling number in E.164; None on internal calls"
+    )
+    to: Optional[str] = Field(
+        default=None, description="Called number in E.164; None on internal calls"
+    )
+    caller_name: Optional[str] = Field(default=None, alias="callerName")
+    callee_name: Optional[str] = Field(default=None, alias="calleeName")
+    started_at: str = Field(..., alias="startedAt", description="When the call began (ISO 8601)")
+    answered_at: Optional[str] = Field(
+        default=None, alias="answeredAt", description="When it was answered (ISO 8601)"
+    )
+    ended_at: Optional[str] = Field(
+        default=None, alias="endedAt", description="When it ended (ISO 8601)"
+    )
+    duration_secs: int = Field(
+        default=0, alias="durationSecs", description="Answered seconds; 0 until the call ends"
+    )
+    credits_charged: int = Field(
+        default=0, alias="creditsCharged", description="Credits charged so far (final once ended)"
+    )
+    billing: str = Field(..., description="metered | settled | unbilled (see CallBilling)")
+    hangup_class: Optional[str] = Field(
+        default=None, alias="hangupClass", description="Why the call ended; None while live"
+    )
+    recording_status: Optional[str] = Field(
+        default=None,
+        alias="recordingStatus",
+        description="recording | ready | failed, or None when nothing was recorded",
+    )
+    metadata: Dict[str, str] = Field(
+        default_factory=dict, description="The key/value pairs attached on create"
+    )
+    transcript: Optional[List[CallTranscriptLine]] = Field(
+        default=None,
+        description=(
+            "Only on calls.get() and only for agent-handled calls; None otherwise. "
+            "An empty list means nothing was said."
+        ),
+    )
+
+    model_config = ConfigDict(populate_by_name=True)
+
+
+class CallPagination(BaseModel):
+    """Paging details on a call listing"""
+
+    total: int = Field(..., description="Total calls matching the filters")
+    limit: int = Field(..., description="Page size used")
+    offset: int = Field(..., description="Offset used")
+    has_more: bool = Field(..., alias="hasMore", description="Whether another page exists")
+
+    model_config = ConfigDict(populate_by_name=True)
+
+
+class CallListResponse(BaseModel):
+    """Response from listing calls"""
+
+    data: List[Call] = Field(..., description="Calls, newest first")
+    pagination: CallPagination = Field(..., description="Paging details")
+
+
+class CallRecording(BaseModel):
+    """Where to fetch a call's recording"""
+
+    call_id: str = Field(..., alias="callId", description="The call the recording belongs to")
+    status: str = Field(
+        ...,
+        description=(
+            "none (nothing was recorded) | recording | ready | failed; "
+            "url is set only when ready"
+        ),
+    )
+    url: Optional[str] = Field(
+        default=None, description="Signed download URL, valid for 5 minutes; None unless ready"
+    )
+    expires_at: Optional[str] = Field(
+        default=None, alias="expiresAt", description="When the URL stops working (ISO 8601)"
+    )
+    content_type: Optional[str] = Field(
+        default=None, alias="contentType", description="audio/ogg when ready, else None"
+    )
+
+    model_config = ConfigDict(populate_by_name=True)
+
+
+class CreateCallRequest(BaseModel):
+    """Request body for ``client.calls.create()``"""
+
+    to: str = Field(..., description="Number to call, in E.164 (US or Canada)")
+    agent_id: str = Field(..., alias="agentId", description="The AI agent that handles the call")
+    from_: Optional[str] = Field(
+        default=None,
+        alias="from",
+        description="A voice-enabled number in the workspace; required when there are several",
+    )
+    context: Optional[str] = Field(
+        default=None, description="Up to 2000 characters added to the agent's instructions"
+    )
+    metadata: Optional[Dict[str, str]] = Field(
+        default=None, description="Up to 20 string pairs echoed on reads and webhooks"
+    )
+
+    model_config = ConfigDict(populate_by_name=True)
+
+
+class ListCallsOptions(BaseModel):
+    """Filters for ``client.calls.list()``"""
+
+    limit: Optional[int] = Field(default=None, description="1-100, default 50")
+    offset: Optional[int] = Field(default=None, description="Rows to skip, default 0")
+    status: Optional[str] = Field(default=None, description="One CallStatus value")
+    direction: Optional[str] = Field(default=None, description="inbound | outbound")
+    kind: Optional[str] = Field(default=None, description="pstn | internal")
+    agent_id: Optional[str] = Field(default=None, alias="agentId")
+    to: Optional[str] = Field(default=None, description="Exact E.164 match")
+    from_: Optional[str] = Field(default=None, alias="from", description="Exact E.164 match")
 
     model_config = ConfigDict(populate_by_name=True)

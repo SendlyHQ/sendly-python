@@ -11,6 +11,7 @@ from .resources.business_upgrade import (
     AsyncBusinessUpgradeResource,
     BusinessUpgradeResource,
 )
+from .resources.calls import AsyncCallsResource, CallsResource
 from .resources.campaigns import AsyncCampaignsResource, CampaignsResource
 from .resources.contacts import AsyncContactsResource, ContactsResource
 from .resources.conversations import AsyncConversationsResource, ConversationsResource
@@ -132,6 +133,7 @@ class Sendly:
         self.business_upgrade = BusinessUpgradeResource(self._http)
         self.whatsapp = WhatsAppResource(self._http)
         self.rcs = RcsResource(self._http)
+        self.calls = CallsResource(self._http)
 
     def __enter__(self) -> "Sendly":
         return self
@@ -275,6 +277,7 @@ class AsyncSendly:
         self.business_upgrade = AsyncBusinessUpgradeResource(self._http)
         self.whatsapp = AsyncWhatsAppResource(self._http)
         self.rcs = AsyncRcsResource(self._http)
+        self.calls = AsyncCallsResource(self._http)
 
     async def __aenter__(self) -> "AsyncSendly":
         return self

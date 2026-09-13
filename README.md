@@ -878,6 +878,67 @@ Writes accept an `idempotency_key` like the other write methods; `submit()` and
 `request_launch()` replays return the original response without notifying the
 reviewers again.
 
+## Voice Calls
+
+Place phone calls that one of your AI agents handles, follow them while they
+ring and after they end, end them early, and download recordings. Requires an
+API key with the `calls:read` / `calls:write` scopes; placing and ending calls
+needs a live key. Voice is enabled workspace by workspace: until it is enabled
+for yours, every call method raises `SendlyError` with code `voice_not_enabled`
+(HTTP 404).
+
+Calls are prepaid from your balance per started minute: 2 credits a minute
+outbound plus 8 a minute while an AI agent is on the line (10 credits a minute
+for an agent-handled outbound call); unanswered calls cost nothing. The number
+you call from must be voice-enabled in the dashboard (Calls, then Settings),
+with an emergency address registered; `client.numbers.list()` shows each
+number's `voice_enabled` and `voice_mode`. Destinations are US and Canada.
+
+```python
+# Pick a voice-enabled number (optional when exactly one is voice-enabled)
+voice_numbers = [n for n in client.numbers.list().numbers if n.voice_enabled]
+
+# Place a call; the agent speaks first, using the context you pass
+call = client.calls.create(
+    to='+15555550123',
+    agent_id='3c4d5e6f-7081-4293-a4b5-c6d7e8f90a1b',
+    from_=voice_numbers[0].phone_number,
+    context='You are calling Jordan to confirm the 3pm appointment on Tuesday.',
+    metadata={'crmId': 'lead_8812'},
+)
+print(call.id, call.status)  # ... 'ringing'
+
+# Follow it: status moves ringing -> active -> completed (or no_answer, busy, ...)
+call = client.calls.get(call.id)
+print(call.status, call.duration_secs, call.credits_charged, call.hangup_class)
+for line in call.transcript or []:   # agent calls only; None on other calls
+    print(f'[{line.at_ms} ms] {line.speaker}: {line.text}')
+
+# List calls, newest first, with filters and paging
+page = client.calls.list(status='completed', direction='outbound', limit=20)
+for c in page.data:
+    print(c.id, c.to, c.duration_secs, c.credits_charged)
+if page.pagination.has_more:
+    page = client.calls.list(status='completed', direction='outbound', limit=20, offset=20)
+
+# End a call early (idempotent: an ended call is returned unchanged)
+client.calls.hangup(call.id)
+
+# Fetch the recording; the signed URL is valid for 5 minutes
+recording = client.calls.recording(call.id)
+if recording.status == 'ready':
+    print(recording.url, recording.expires_at, recording.content_type)  # audio/ogg
+```
+
+Refusals come back as `SendlyError` with a code that says what to do:
+`insufficient_credits` (raised as `InsufficientCreditsError`; top up),
+`e911_required` (register an emergency address for the number), `lines_busy`
+(retry with backoff), `daily_call_limit` (try again tomorrow),
+`agent_not_found` / `agent_disabled`, `from_number_required` / `no_voice_number`,
+`destination_not_supported`, `live_key_required`. Webhooks `call.started`,
+`call.completed` and `call.recording.ready` carry the same call object in
+snake_case, including `billing` and your `metadata`.
+
 ## Error Handling
 
 The SDK provides typed exception classes:
@@ -1171,6 +1232,28 @@ Submit the agent and its brand for review by Sendly, then the carrier network. `
 #### `agents.request_launch(id, test_url=None, testing_additional_information=None, idempotency_key=None) -> RcsAgentDetail`
 
 Ask for the launch review once the agent is in `testing` and has been tried on an invited device.
+
+### `client.calls`
+
+#### `create(to, agent_id, from_=None, context=None, metadata=None, idempotency_key=None) -> Call`
+
+Place a phone call handled by an AI agent (live key, `calls:write`). Returns the call while it is `ringing`; `from_` is required when more than one number is voice-enabled.
+
+#### `list(limit=None, offset=None, status=None, direction=None, kind=None, agent_id=None, to=None, from_=None) -> CallListResponse`
+
+List calls newest first; `pagination.has_more` says whether another page exists.
+
+#### `get(id) -> Call`
+
+Fetch one call. Agent-handled calls carry `transcript`; on other calls it is `None`.
+
+#### `hangup(id, idempotency_key=None) -> Call`
+
+End a call (live key, `calls:write`). `ringing` becomes `cancelled`, `active` becomes `completed`; an ended call is returned unchanged.
+
+#### `recording(id) -> CallRecording`
+
+Where to download the recording. `url` and `expires_at` are set only while `status` is `ready`; the link is valid for 5 minutes.
 
 ## Enterprise
 

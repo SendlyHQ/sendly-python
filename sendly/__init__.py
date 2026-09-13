@@ -51,6 +51,7 @@ from .resources.business_upgrade import (
     AsyncBusinessUpgradeResource,
     BusinessUpgradeResource,
 )
+from .resources.calls import AsyncCallsResource, CallsResource
 from .resources.links import AsyncLinksResource, LinksResource
 from .resources.media import AsyncMediaResource, MediaResource
 from .resources.numbers import AsyncNumbersResource, NumbersResource
@@ -194,6 +195,20 @@ from .types import (
     RcsTestDeviceInput,
     RcsTestDeviceListResponse,
     RcsTesting,
+    # Voice call types
+    Call,
+    CallBilling,
+    CallDirection,
+    CallHandledBy,
+    CallKind,
+    CallListResponse,
+    CallPagination,
+    CallRecording,
+    CallRecordingStatus,
+    CallStatus,
+    CallTranscriptLine,
+    CreateCallRequest,
+    ListCallsOptions,
     OptInPage,
     PricingTier,
     QuotaSettings,
@@ -406,6 +421,20 @@ __all__ = [
     "RcsTestDeviceInput",
     "RcsTestDeviceListResponse",
     "RcsTesting",
+    # Voice call types
+    "Call",
+    "CallBilling",
+    "CallDirection",
+    "CallHandledBy",
+    "CallKind",
+    "CallListResponse",
+    "CallPagination",
+    "CallRecording",
+    "CallRecordingStatus",
+    "CallStatus",
+    "CallTranscriptLine",
+    "CreateCallRequest",
+    "ListCallsOptions",
     # Links resources
     "LinksResource",
     "AsyncLinksResource",
@@ -427,6 +456,9 @@ __all__ = [
     # RCS resources
     "RcsResource",
     "AsyncRcsResource",
+    # Voice call resources
+    "CallsResource",
+    "AsyncCallsResource",
     # Errors
     "SendlyError",
     "AuthenticationError",
