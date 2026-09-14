@@ -26,6 +26,13 @@ class MessageStatus(str, Enum):
     FAILED = "failed"
     BOUNCED = "bounced"
     RETRYING = "retrying"
+    RECEIVED = "received"
+    UNDELIVERED = "undelivered"
+    UNKNOWN = "unknown"
+
+    @classmethod
+    def _missing_(cls, value: object) -> "MessageStatus":
+        return cls.UNKNOWN
 
 
 class SenderType(str, Enum):

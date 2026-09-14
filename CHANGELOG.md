@@ -1,5 +1,16 @@
 # sendly (Python)
 
+## 4.1.0
+
+### Minor Changes
+
+- **Voice calls: `client.calls`.** `create(to, agent_id, from_=..., context=..., metadata=...)` places a phone call that one of your workspace's AI agents handles; `list(...)`, `get(id)`, `hangup(id)` and `recording(id)` follow it, end it early and fetch the recording. Sync and async clients. Reads need the `calls:read` scope, writes `calls:write` and a live API key; until voice is enabled for your workspace the routes answer 404 `voice_not_enabled`.
+- `voice_enabled` and `voice_mode` on owned numbers.
+
+### Patch Changes
+
+- `MessageStatus` gains `RECEIVED` and `UNDELIVERED`. `messages.list()` returns inbound rows by default and their status is `received`, which the strict enum rejected, so listing failed for any workspace with inbound traffic. Any status this version does not know now maps to `MessageStatus.UNKNOWN` instead of raising.
+
 ## 4.0.0
 
 **Upgrading from 3.40.0:** that release already contained the breaking changes below, published by mistake as a minor version. 4.0.0 carries them under the correct major. Relative to 3.40.0, the only new changes are under **Security**.

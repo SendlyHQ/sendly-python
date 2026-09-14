@@ -15,7 +15,7 @@ from sendly.errors import (
     TimeoutError,
     ValidationError,
 )
-from sendly.types import Message, MessageListResponse
+from sendly.types import MessageStatus, Message, MessageListResponse
 
 
 class TestMessagesSend:
@@ -317,6 +317,28 @@ class TestMessagesList:
         assert result.count == 2
         request = httpx_mock.get_request()
         assert "limit=10" in str(request.url)
+
+        client.close()
+
+    def test_list_keeps_inbound_and_unknown_statuses(self, api_key, mock_message_list, httpx_mock: HTTPXMock):
+        """Inbound rows come back as received; a status this build does not know maps to UNKNOWN"""
+        client = Sendly(api_key)
+        body = dict(mock_message_list)
+        body["data"] = [
+            {**mock_message_list["data"][0], "status": "received"},
+            {**mock_message_list["data"][1], "status": "scheduled"},
+        ]
+
+        httpx_mock.add_response(
+            url="https://sendly.live/api/v1/messages",
+            method="GET",
+            json=body,
+        )
+
+        result = client.messages.list()
+
+        assert result.data[0].status == MessageStatus.RECEIVED
+        assert result.data[1].status == MessageStatus.UNKNOWN
 
         client.close()
 
