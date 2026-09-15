@@ -63,7 +63,7 @@ class WhatsAppSignupResource:
         Args:
             phone_number: The number to connect, in E.164 format. Must be an
                 active number in your workspace (provisioned, purchased, or
-                ported into Sendly).
+                fully ported into Sendly).
         """
         validate_phone_number(phone_number)
         data = self._http.request(
