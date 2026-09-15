@@ -849,21 +849,28 @@ print(registration.stage)  # 'in_review' -> 'brand_verification' -> 'agent_revie
 # 5. Once in testing: invite devices, describe the campaign, then request launch
 if registration.stage == RcsCustomerStage.TESTING:
     client.rcs.agents.set_test_devices(agent.id, [
-        '+15551234567',
-        {'phone_number': '+15557654321', 'label': 'Sam'},
+        '+15125550142',
+        {'phone_number': '+15125550177', 'label': 'Sam'},
     ])
     client.rcs.agents.update(
         agent.id,
         campaign={
+            'company_overview': 'Acme Coffee runs 12 cafes and an online store.',
             'agent_overview': 'Order updates and support replies',
             'interactions': [{'interaction_type': 'TRANSACTIONAL_UPDATES',
                               'description': 'Shipping and delivery updates'}],
-            'message_examples': ['Your order #123 has shipped!',
-                                 'Your table is ready!',
-                                 'Reply HELP for help'],
+            'message_examples': ['Acme Coffee: order #123 has shipped. Reply STOP to opt out.',
+                                 'Acme Coffee: your table is ready!',
+                                 'Acme Coffee: reply HELP for help.'],
             'consent_settings': {
                 'opt_in_methods': [{'method_type': 'WEBSITE',
                                     'description': 'Checkout checkbox'}],
+                'call_to_action': 'Get order updates by message',
+                'call_to_action_url': 'https://acme.example/checkout',
+                'call_to_action_media_url': 'https://acme.example/rcs/opt-in.png',
+                'double_opt_in': False,
+                'opt_in_message': 'Acme Coffee: you are subscribed. Reply HELP for help, STOP to opt out.',
+                'help_response': 'Acme Coffee: email help@acme.example for help.',
                 'opt_out_response': 'You are unsubscribed.',
             },
         },
