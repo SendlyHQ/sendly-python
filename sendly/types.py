@@ -3568,3 +3568,214 @@ class ListCallsOptions(BaseModel):
     from_: Optional[str] = Field(default=None, alias="from", description="Exact E.164 match")
 
     model_config = ConfigDict(populate_by_name=True)
+
+
+# ============================================================================
+# Voice configuration
+# ============================================================================
+
+
+class VoiceMode(str, Enum):
+    """How a number answers inbound phone calls. Always ``none`` when voice is
+    off for the number."""
+
+    NONE = "none"
+    RING_DASHBOARD = "ring_dashboard"
+    AGENT = "agent"
+
+
+class EmergencyAddress(BaseModel):
+    """A street address registered for emergency calls from a number"""
+
+    street: str = Field(..., description="Street address")
+    unit: Optional[str] = Field(default=None, description="Suite, apartment or floor")
+    city: str = Field(..., description="City")
+    state: str = Field(..., description="State or province code, e.g. TX")
+    zip: str = Field(..., description="Five-digit ZIP code, or a Canadian postal code")
+    country: str = Field(..., description="US | CA")
+
+    model_config = ConfigDict(populate_by_name=True)
+
+
+class VoiceNumberEmergencyAddress(BaseModel):
+    """The emergency address on file for a number"""
+
+    status: str = Field(
+        ..., description="provisioning | active, or the failure status the registration ended in"
+    )
+    address: Optional[EmergencyAddress] = Field(
+        default=None, description="The registered address; None if none is stored"
+    )
+
+    model_config = ConfigDict(populate_by_name=True)
+
+
+class VoiceNumberRates(BaseModel):
+    """Credits charged per started minute for calls on a number"""
+
+    inbound: int = Field(..., description="Inbound call answered by the team")
+    outbound: int = Field(..., description="Outbound call")
+    agent: int = Field(..., description="Inbound call answered by an AI agent")
+
+
+class VoiceNumber(BaseModel):
+    """A workspace phone number and how it handles phone calls"""
+
+    id: str = Field(..., description="Number identifier")
+    object: str = Field(default="voice_number", description="Always 'voice_number'")
+    phone_number: str = Field(..., alias="phoneNumber", description="The number in E.164")
+    phone_number_type: Optional[str] = Field(
+        default=None, alias="phoneNumberType", description="local | toll_free | mobile"
+    )
+    country_code: Optional[str] = Field(
+        default=None, alias="countryCode", description="ISO country code, e.g. US"
+    )
+    is_default: bool = Field(
+        default=False, alias="isDefault", description="Whether this is the default sender"
+    )
+    voice_enabled: bool = Field(
+        ..., alias="voiceEnabled", description="Whether the number takes and places calls"
+    )
+    voice_mode: str = Field(
+        ..., alias="voiceMode", description="none | ring_dashboard | agent (see VoiceMode)"
+    )
+    agent_id: Optional[str] = Field(
+        default=None,
+        alias="agentId",
+        description="The agent that answers when voice_mode is agent; may be None otherwise",
+    )
+    emergency_address: Optional[VoiceNumberEmergencyAddress] = Field(
+        default=None,
+        alias="emergencyAddress",
+        description="None when no emergency address was ever registered",
+    )
+    rate_per_minute: VoiceNumberRates = Field(
+        ..., alias="ratePerMinute", description="Credits per started minute"
+    )
+
+    model_config = ConfigDict(populate_by_name=True)
+
+
+class VoiceNumberListResponse(BaseModel):
+    """Response from listing voice numbers"""
+
+    data: List[VoiceNumber] = Field(..., description="Active numbers in the workspace")
+
+
+class VoiceAgentTools(BaseModel):
+    """What an AI agent may do on a call beyond talking"""
+
+    send_sms: bool = Field(
+        default=True,
+        alias="sendSms",
+        description="Whether the agent may text the other party during the call",
+    )
+    transfer_to: Optional[str] = Field(
+        default=None,
+        alias="transferTo",
+        description=(
+            "A number in E.164 for handing callers to a person. The agent does not "
+            "transfer calls yet: it offers to pass a message on and takes the "
+            "caller's name and number instead."
+        ),
+    )
+
+    model_config = ConfigDict(populate_by_name=True)
+
+
+class VoiceAgent(BaseModel):
+    """An AI agent that answers and places phone calls"""
+
+    id: str = Field(..., description="Agent identifier")
+    object: str = Field(default="voice_agent", description="Always 'voice_agent'")
+    name: str = Field(..., description="Name shown in the dashboard and used by the agent")
+    enabled: bool = Field(..., description="Disabled agents take no calls")
+    voice: str = Field(..., description="Voice id (see client.voice.voices.list())")
+    voice_label: str = Field(..., alias="voiceLabel", description="Human-readable voice name")
+    language: str = Field(..., description="Language tag, e.g. en-US")
+    greeting: str = Field(default="", description="What the agent says first")
+    instructions: str = Field(default="", description="How the agent should behave")
+    tools: VoiceAgentTools = Field(
+        default_factory=VoiceAgentTools, description="What the agent may do on a call"
+    )
+    can_send_sms: bool = Field(
+        default=False,
+        alias="canSendSms",
+        description="Whether the agent holds the sending key it needs to text",
+    )
+    calls_handled: int = Field(default=0, alias="callsHandled", description="Calls it has handled")
+    avg_duration_secs: int = Field(
+        default=0, alias="avgDurationSecs", description="Average call length in seconds"
+    )
+    created_at: str = Field(..., alias="createdAt", description="ISO 8601")
+    updated_at: str = Field(..., alias="updatedAt", description="ISO 8601")
+
+    model_config = ConfigDict(populate_by_name=True)
+
+
+class VoiceAgentListResponse(BaseModel):
+    """Response from listing voice agents"""
+
+    data: List[VoiceAgent] = Field(..., description="Agents in the workspace")
+
+
+class DeletedVoiceAgent(BaseModel):
+    """Response from deleting a voice agent"""
+
+    id: str = Field(..., description="The deleted agent's identifier")
+    object: str = Field(default="voice_agent", description="Always 'voice_agent'")
+    deleted: bool = Field(..., description="Always True")
+
+
+class Voice(BaseModel):
+    """A voice an agent can speak with"""
+
+    id: str = Field(..., description="Voice id to pass as an agent's voice")
+    label: str = Field(..., description="Human-readable name")
+    language: str = Field(..., description="Language the voice speaks, e.g. en")
+
+
+class VoiceListResponse(BaseModel):
+    """Response from listing voices"""
+
+    data: List[Voice] = Field(..., description="Voices available to agents")
+
+
+class UpdateVoiceNumberRequest(BaseModel):
+    """Request body for ``client.voice.numbers.update()``"""
+
+    voice_enabled: Optional[bool] = Field(default=None, alias="voiceEnabled")
+    voice_mode: Optional[str] = Field(
+        default=None, alias="voiceMode", description="none | ring_dashboard | agent"
+    )
+    agent_id: Optional[str] = Field(default=None, alias="agentId")
+
+    model_config = ConfigDict(populate_by_name=True)
+
+
+class CreateVoiceAgentRequest(BaseModel):
+    """Request body for ``client.voice.agents.create()``"""
+
+    name: str = Field(..., description="1-80 characters")
+    enabled: Optional[bool] = Field(default=None)
+    voice: Optional[str] = Field(default=None, description="A voice id; unknown ids use the default")
+    language: Optional[str] = Field(default=None, description="Language tag, e.g. en-US")
+    greeting: Optional[str] = Field(default=None, description="Up to 500 characters")
+    instructions: Optional[str] = Field(default=None, description="Up to 4000 characters")
+    tools: Optional[VoiceAgentTools] = Field(default=None)
+
+    model_config = ConfigDict(populate_by_name=True)
+
+
+class UpdateVoiceAgentRequest(BaseModel):
+    """Request body for ``client.voice.agents.update()``"""
+
+    name: Optional[str] = Field(default=None, description="1-80 characters")
+    enabled: Optional[bool] = Field(default=None)
+    voice: Optional[str] = Field(default=None)
+    language: Optional[str] = Field(default=None)
+    greeting: Optional[str] = Field(default=None)
+    instructions: Optional[str] = Field(default=None)
+    tools: Optional[VoiceAgentTools] = Field(default=None)
+
+    model_config = ConfigDict(populate_by_name=True)

@@ -1,5 +1,16 @@
 # sendly (Python)
 
+## 4.2.0
+
+### Minor Changes
+
+- **Voice configuration: `client.voice`.** Everything a phone call depends on is now configurable from code. `voice.numbers.list()`, `get(number)`, `update(number, voice_enabled=..., voice_mode=..., agent_id=...)` and `register_emergency_address(number, street=..., unit=..., city=..., state=..., zip=..., country=...)` switch voice on for a number, choose how it answers and register the emergency address it needs before it can place calls; `number` is the number's id or its E.164 phone number. `voice.agents.list()`, `create(name, ...)`, `get(id)`, `update(id, ...)` and `delete(id)` manage the AI agents that talk, and `voice.voices.list()` lists the voices they can use. Sync and async clients. Reads need the `calls:read` scope, writes `calls:write` and a live API key. Deleting an agent that still answers a number raises `SendlyError` with code `agent_in_use` (HTTP 409) and the numbers in `e.response.model_extra['numbers']`.
+- New types: `VoiceNumber`, `VoiceNumberListResponse`, `VoiceNumberEmergencyAddress`, `EmergencyAddress`, `VoiceNumberRates`, `VoiceMode`, `VoiceAgent`, `VoiceAgentListResponse`, `VoiceAgentTools`, `Voice`, `VoiceListResponse`, `CreateVoiceAgentRequest`, `UpdateVoiceAgentRequest`, `UpdateVoiceNumberRequest` and `DeletedVoiceAgent`.
+
+### Patch Changes
+
+- The `calls.recording()` docstring had the channels the wrong way round. Agent calls are recorded with the agent on the left channel and the other party on the right.
+
 ## 4.1.0
 
 ### Minor Changes

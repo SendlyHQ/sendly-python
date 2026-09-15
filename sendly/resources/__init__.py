@@ -15,11 +15,14 @@ from .rules import AsyncRulesResource, RulesResource
 from .templates import AsyncTemplatesResource, TemplatesResource
 from .tendlc import AsyncTenDlcResource, TenDlcResource
 from .verify import AsyncVerifyResource, VerifyResource
+from .voice import AsyncVoiceResource, VoiceResource
 from .whatsapp import AsyncWhatsAppResource, WhatsAppResource
 
 __all__ = [
     "CallsResource",
     "AsyncCallsResource",
+    "VoiceResource",
+    "AsyncVoiceResource",
     "CampaignsResource",
     "AsyncCampaignsResource",
     "ContactsResource",

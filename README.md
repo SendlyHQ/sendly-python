@@ -897,13 +897,14 @@ for yours, every call method raises `SendlyError` with code `voice_not_enabled`
 Calls are prepaid from your balance per started minute: 2 credits a minute
 outbound plus 8 a minute while an AI agent is on the line (10 credits a minute
 for an agent-handled outbound call); unanswered calls cost nothing. The number
-you call from must be voice-enabled in the dashboard (Calls, then Settings),
-with an emergency address registered; `client.numbers.list()` shows each
-number's `voice_enabled` and `voice_mode`. Destinations are US and Canada.
+you call from must be voice-enabled, with an emergency address registered (see
+[Configure voice](#configure-voice)); `client.voice.numbers.list()` shows each
+number's `voice_enabled`, `voice_mode` and `emergency_address`. Destinations
+are US and Canada.
 
 ```python
 # Pick a voice-enabled number (optional when exactly one is voice-enabled)
-voice_numbers = [n for n in client.numbers.list().numbers if n.voice_enabled]
+voice_numbers = [n for n in client.voice.numbers.list().data if n.voice_enabled]
 
 # Place a call; the agent speaks first, using the context you pass
 call = client.calls.create(
@@ -945,6 +946,84 @@ Refusals come back as `SendlyError` with a code that says what to do:
 `destination_not_supported`, `live_key_required`. Webhooks `call.started`,
 `call.completed` and `call.recording.ready` carry the same call object in
 snake_case, including `billing` and your `metadata`.
+
+### Configure voice
+
+Everything a call depends on can be set up from code: switch voice on for a
+number and choose how it answers, register its emergency address, and create
+the AI agents that talk. Reads need `calls:read`; writes need `calls:write` and
+a live key. In a team workspace, changing numbers and managing agents needs an
+owner or admin role (`forbidden` otherwise). These settings change how real
+phone calls to your numbers are answered.
+
+```python
+from sendly import SendlyError
+
+# The voices an agent can speak with
+for v in client.voice.voices.list().data:
+    print(v.id, v.label, v.language)
+
+# Create an agent (up to 20 per workspace); it gets its own key for texting
+agent = client.voice.agents.create(
+    name='Front desk',
+    voice='ashley',
+    greeting='Thanks for calling Acme, how can I help?',
+    instructions='Answer questions about opening hours and take a message for anything else.',
+    tools={'send_sms': True},
+)
+print(agent.id, agent.voice_label, agent.can_send_sms)
+
+# Edit it later; only the fields you pass change
+client.voice.agents.update(agent.id, greeting='Hi, you have reached Acme.')
+
+# Numbers with their voice settings; pass either the id or the E.164 number
+for n in client.voice.numbers.list().data:
+    e911 = n.emergency_address.status if n.emergency_address else 'none'
+    print(n.phone_number, n.voice_mode, n.agent_id, e911)
+
+# Register the emergency address a number needs before it can place calls
+# (US and Canadian numbers; the first registration adds 1.50 USD a month)
+number = client.voice.numbers.register_emergency_address(
+    '+15555550188',
+    street='500 Example Ave',
+    unit='Suite 2',
+    city='Austin',
+    state='TX',
+    zip='78701',
+)
+
+# Let the agent answer the number (voice_mode='ring_dashboard' rings your team)
+number = client.voice.numbers.update(
+    '+15555550188', voice_enabled=True, voice_mode='agent', agent_id=agent.id
+)
+print(number.voice_mode, number.rate_per_minute.agent)  # credits a minute
+
+# Switch voice off (the same as voice_mode='none')
+client.voice.numbers.update('+15555550188', voice_enabled=False)
+
+# Deleting an agent revokes its key; refused while a number still points at it
+try:
+    client.voice.agents.delete(agent.id)
+except SendlyError as e:
+    if e.code == 'agent_in_use':
+        print(e.response.model_extra['numbers'])
+```
+
+Without `voice_enabled`, `voice_mode='ring_dashboard'` or `'agent'` switches
+voice on and `voice_mode='none'` switches it off; `voice_enabled=False` always
+switches voice off.
+
+Refusals: `agent_required` (agent mode with no agent), `agent_not_found`,
+`agent_disabled` (turn the agent on first), `agent_limit`, `agent_in_use`,
+`number_not_found`, `invalid_voice_mode`, `voice_attach_failed` (HTTP 502,
+retry shortly), `carrier_refused` (HTTP 502, retry shortly unless the message
+says the number couldn't be found for emergency registration: contact
+support), `voice_unavailable` (HTTP 503),
+`e911_not_applicable` (only US and Canadian numbers take an emergency
+address) and `invalid_address`; on HTTP 422 the closest valid address is in
+`e.response.model_extra['suggested']`. An agent's `tools.transfer_to` is
+stored, but agents do not transfer calls yet: when a caller asks for a person,
+the agent offers to pass a message on and takes their name and number.
 
 ## Error Handling
 
@@ -1261,6 +1340,48 @@ End a call (live key, `calls:write`). `ringing` becomes `cancelled`, `active` be
 #### `recording(id) -> CallRecording`
 
 Where to download the recording. `url` and `expires_at` are set only while `status` is `ready`; the link is valid for 5 minutes.
+
+### `client.voice`
+
+#### `numbers.list() -> VoiceNumberListResponse`
+
+Active numbers in the workspace with `voice_enabled`, `voice_mode`, `agent_id`, `emergency_address` and `rate_per_minute`.
+
+#### `numbers.get(number) -> VoiceNumber`
+
+One number's voice settings. `number` is the number's id or its E.164 phone number.
+
+#### `numbers.update(number, voice_enabled=None, voice_mode=None, agent_id=None, idempotency_key=None) -> VoiceNumber`
+
+Change how a number answers calls (live key, `calls:write`). Without `voice_enabled`, `ring_dashboard` or `agent` switches voice on and `none` switches it off; `voice_enabled=False` always switches it off. `agent` needs an enabled agent.
+
+#### `numbers.register_emergency_address(number, street, city, state, zip, unit=None, country=None, idempotency_key=None) -> VoiceNumber`
+
+Register the emergency address a number needs before it can place calls (live key, `calls:write`). US and Canadian numbers only.
+
+#### `agents.list() -> VoiceAgentListResponse`
+
+The workspace's AI agents.
+
+#### `agents.create(name, enabled=None, voice=None, language=None, greeting=None, instructions=None, tools=None, idempotency_key=None) -> VoiceAgent`
+
+Create an AI agent (live key, `calls:write`). Up to 20 per workspace.
+
+#### `agents.get(id) -> VoiceAgent`
+
+Fetch one agent.
+
+#### `agents.update(id, name=None, enabled=None, voice=None, language=None, greeting=None, instructions=None, tools=None, idempotency_key=None) -> VoiceAgent`
+
+Edit an agent; only the fields you pass change, and `tools` may be partial.
+
+#### `agents.delete(id, idempotency_key=None) -> DeletedVoiceAgent`
+
+Delete an agent and revoke its sending key. Raises `agent_in_use` (HTTP 409) while a number still points at it.
+
+#### `voices.list() -> VoiceListResponse`
+
+The voices an agent can speak with; pass a voice's `id` as `voice`.
 
 ## Enterprise
 

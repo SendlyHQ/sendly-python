@@ -57,6 +57,7 @@ from .resources.media import AsyncMediaResource, MediaResource
 from .resources.numbers import AsyncNumbersResource, NumbersResource
 from .resources.rcs import AsyncRcsResource, RcsResource
 from .resources.tendlc import AsyncTenDlcResource, TenDlcResource
+from .resources.voice import AsyncVoiceResource, VoiceResource
 from .resources.whatsapp import AsyncWhatsAppResource, WhatsAppResource
 
 # Types
@@ -209,6 +210,22 @@ from .types import (
     CallTranscriptLine,
     CreateCallRequest,
     ListCallsOptions,
+    # Voice configuration types
+    CreateVoiceAgentRequest,
+    DeletedVoiceAgent,
+    EmergencyAddress,
+    UpdateVoiceAgentRequest,
+    UpdateVoiceNumberRequest,
+    Voice,
+    VoiceAgent,
+    VoiceAgentListResponse,
+    VoiceAgentTools,
+    VoiceListResponse,
+    VoiceMode,
+    VoiceNumber,
+    VoiceNumberEmergencyAddress,
+    VoiceNumberListResponse,
+    VoiceNumberRates,
     OptInPage,
     PricingTier,
     QuotaSettings,
@@ -435,6 +452,22 @@ __all__ = [
     "CallTranscriptLine",
     "CreateCallRequest",
     "ListCallsOptions",
+    # Voice configuration types
+    "CreateVoiceAgentRequest",
+    "DeletedVoiceAgent",
+    "EmergencyAddress",
+    "UpdateVoiceAgentRequest",
+    "UpdateVoiceNumberRequest",
+    "Voice",
+    "VoiceAgent",
+    "VoiceAgentListResponse",
+    "VoiceAgentTools",
+    "VoiceListResponse",
+    "VoiceMode",
+    "VoiceNumber",
+    "VoiceNumberEmergencyAddress",
+    "VoiceNumberListResponse",
+    "VoiceNumberRates",
     # Links resources
     "LinksResource",
     "AsyncLinksResource",
@@ -459,6 +492,9 @@ __all__ = [
     # Voice call resources
     "CallsResource",
     "AsyncCallsResource",
+    # Voice configuration resources
+    "VoiceResource",
+    "AsyncVoiceResource",
     # Errors
     "SendlyError",
     "AuthenticationError",

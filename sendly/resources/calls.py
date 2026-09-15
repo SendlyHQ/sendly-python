@@ -5,7 +5,7 @@ A workspace phone number can take and place phone calls. Over the API you
 place an outbound call that one of your AI agents handles, list and inspect
 calls, end a call, and fetch recordings. Switching voice on for a number,
 choosing how it answers, registering an emergency address and creating agents
-are dashboard steps in this release; ``client.numbers.list()`` reports each
+live in ``client.voice``; ``client.voice.numbers.list()`` reports each
 number's ``voice_enabled`` and ``voice_mode`` so you can pick a ``from_``.
 
 Reads need an API key with the ``calls:read`` scope, writes ``calls:write``.
@@ -96,7 +96,8 @@ class CallsResource:
                 the agent rate (``credits_needed``, ``current_balance``).
             SendlyError: With ``code`` ``agent_not_found``, ``agent_disabled``,
                 ``no_voice_number``, ``number_not_found``, ``e911_required``
-                (register an emergency address for the number first),
+                (register an emergency address for the number first with
+                ``client.voice.numbers.register_emergency_address``),
                 ``lines_busy`` (retry shortly), ``daily_call_limit``,
                 ``outbound_calls_not_enabled`` or ``voice_not_enabled``.
 
@@ -199,8 +200,9 @@ class CallsResource:
         ``url`` and ``expires_at`` are set only while ``status`` is ``ready``;
         the link is signed and valid for 5 minutes, so fetch it right before
         downloading. Recordings are Ogg/Opus; agent calls are recorded
-        dual-channel (caller left, agent right). ``status`` is ``none`` when
-        nothing was recorded (recording off, or the call was never answered).
+        dual-channel, the agent on the left channel and the other party on
+        the right. ``status`` is ``none`` when nothing was recorded
+        (recording off, or the call was never answered).
 
         Args:
             id: Call identifier.
