@@ -4,9 +4,23 @@ Sendly SDK Error Classes
 Custom exceptions for different error scenarios.
 """
 
+import re
 from typing import Any, Dict, List, Optional
 
 from .types import ApiErrorResponse
+
+_ERROR_CODE = re.compile(r"^[a-z][a-z0-9_]*$")
+
+_CODE_FOR_STATUS = {
+    400: "invalid_request",
+    401: "unauthorized",
+    402: "insufficient_credits",
+    403: "forbidden",
+    404: "not_found",
+    409: "conflict",
+    422: "invalid_request",
+    429: "rate_limit_exceeded",
+}
 
 
 class SendlyError(Exception):
@@ -48,17 +62,32 @@ class SendlyError(Exception):
 
     @classmethod
     def from_response(cls, status_code: int, response_data: Dict[str, Any]) -> "SendlyError":
-        """Create a SendlyError from an API response"""
-        try:
-            error_response = ApiErrorResponse(**response_data)
-        except Exception:
-            error_response = ApiErrorResponse(
-                error="internal_error",
-                message=str(response_data),
-            )
+        """Create a SendlyError from an API response
 
-        code = error_response.error
-        message = error_response.message
+        A body whose ``error`` is a sentence rather than a code, or that has no
+        ``error`` at all, gets its code from the HTTP status (``invalid_request``,
+        ``unauthorized``, ``insufficient_credits``, ``forbidden``,
+        ``not_found``, ``conflict`` or ``rate_limit_exceeded``, otherwise
+        ``internal_error``) and its message from ``message``, then the
+        sentence, then the status. ``response`` keeps the rest of the body.
+        """
+        raw_error = response_data.get("error")
+        raw_message = response_data.get("message")
+        error_text = raw_error.strip() if isinstance(raw_error, str) else ""
+        has_code = bool(_ERROR_CODE.match(error_text))
+        code = error_text if has_code else _CODE_FOR_STATUS.get(status_code, "internal_error")
+        message = (
+            raw_message
+            if isinstance(raw_message, str) and raw_message
+            else ("" if has_code else error_text) or f"HTTP {status_code}"
+        )
+
+        try:
+            error_response = ApiErrorResponse(
+                **{**response_data, "error": error_text or code, "message": message}
+            )
+        except Exception:
+            error_response = ApiErrorResponse(error=error_text or code, message=message)
 
         # Return specific error types based on error code
         if code in (
@@ -73,12 +102,18 @@ class SendlyError(Exception):
         ):
             return AuthenticationError(message, code, status_code, error_response)
 
-        if code == "rate_limit_exceeded":
+        if code in (
+            "rate_limit_exceeded",
+            "provision_rate_limit",
+            "too_many_failed_key_attempts",
+            "too_many_concurrent_verifications",
+        ):
             return RateLimitError(
                 message,
                 retry_after=error_response.retry_after or 60,
                 status_code=status_code,
                 response=error_response,
+                code=code,
             )
 
         if code == "insufficient_credits":
@@ -90,7 +125,12 @@ class SendlyError(Exception):
                 response=error_response,
             )
 
-        if code in ("invalid_request", "unsupported_destination"):
+        if code in (
+            "invalid_request",
+            "unsupported_destination",
+            "validation_error",
+            "invalid_code",
+        ):
             return ValidationError(message, code, status_code, error_response)
 
         if code == "not_found":
@@ -113,7 +153,18 @@ class AuthenticationError(SendlyError):
 
 
 class RateLimitError(SendlyError):
-    """Thrown when rate limit is exceeded"""
+    """Thrown when rate limit is exceeded
+
+    ``code`` is ``rate_limit_exceeded`` for the request limit, and
+    ``provision_rate_limit`` for the workspace provisioning limit (120 a
+    minute, 1,000 an hour). It is ``too_many_failed_key_attempts`` when
+    repeated wrong API keys from one address locked the account out for a
+    while: fix the key, then wait
+    ``retry_after`` seconds, since until the lockout ends the right key can
+    be refused too. It is ``too_many_concurrent_verifications`` when too many
+    first-time key checks ran at once; the client retries that one itself
+    and only raises it once its retries run out.
+    """
 
     def __init__(
         self,
@@ -121,8 +172,9 @@ class RateLimitError(SendlyError):
         retry_after: int,
         status_code: Optional[int] = None,
         response: Optional[ApiErrorResponse] = None,
+        code: str = "rate_limit_exceeded",
     ):
-        super().__init__(message, "rate_limit_exceeded", status_code, response)
+        super().__init__(message, code, status_code, response)
         self.retry_after = retry_after
 
 

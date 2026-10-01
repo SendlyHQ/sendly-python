@@ -31,6 +31,27 @@ DEFAULT_MAX_RETRIES = 3
 SDK_VERSION = "4.2.0"
 
 
+_WAIT_AND_RETRY_CODES = (
+    "rate_limit_exceeded",
+    "provision_rate_limit",
+    "too_many_concurrent_verifications",
+)
+_MAX_RETRY_WAIT_SECONDS = 60
+
+
+def _waits_out(error: RateLimitError) -> bool:
+    return error.code in _WAIT_AND_RETRY_CODES and error.retry_after <= _MAX_RETRY_WAIT_SECONDS
+
+
+def _check_path_ids(path: str) -> None:
+    segments = re.split(r"[?#]", path, maxsplit=1)[0].lstrip("/").split("/")
+    if any(segment in ("", ".", "..") for segment in segments):
+        raise ValidationError(
+            'An id in the request path is empty, "." or "..", which would send '
+            f"the request to a different endpoint: {path}"
+        )
+
+
 class HttpClient:
     """Synchronous HTTP client for making API requests"""
 
@@ -146,13 +167,14 @@ class HttpClient:
             raise ValidationError("Idempotency key must be 1-255 printable ASCII characters")
         return trimmed
 
-    def _is_server_error_response(self, error: SendlyError) -> bool:
+    def _is_retryable_response(self, error: SendlyError) -> bool:
         """
-        Check if the error carries an actual 5xx response from the server,
-        as opposed to a timeout or network failure where the outcome of the
-        request is unknown
+        Check if an error response can change on a retry: a request timeout
+        (408), too early (425) or a server error (5xx). Every other status,
+        redirects included, is the API's final answer.
         """
-        return error.status_code is not None and error.status_code >= 500
+        status = error.status_code
+        return status is not None and (status in (408, 425) or status >= 500)
 
     def request(
         self,
@@ -162,8 +184,10 @@ class HttpClient:
         params: Optional[Dict[str, Any]] = None,
         idempotency_key: Optional[str] = None,
         auto_idempotency_key: bool = True,
+        retry_unsent_only: bool = False,
     ) -> Any:
         """Make an HTTP request to the API"""
+        _check_path_ids(path)
         explicit_key = self._normalize_idempotency_key(idempotency_key)
         key = explicit_key
         if key is None and method == "POST" and auto_idempotency_key:
@@ -191,31 +215,32 @@ class HttpClient:
             except SendlyError as e:
                 last_error = e
 
-                # Don't retry certain errors
-                if e.status_code in (400, 401, 402, 403, 404):
-                    raise
-
                 # Handle rate limiting
-                if isinstance(e, RateLimitError):
+                if isinstance(e, RateLimitError) and _waits_out(e):
                     if attempt < self.max_retries:
                         time.sleep(e.retry_after)
                         continue
                     raise
 
-                # A 5xx response may be cached by the server under the key,
-                # so rotate an auto-generated key to let the retry
-                # re-execute. Caller-supplied keys are never rotated.
-                if explicit_key is None and key is not None and self._is_server_error_response(e):
-                    key = self._generate_idempotency_key()
+                if retry_unsent_only or not self._is_retryable_response(e):
+                    raise
+
+                if attempt < self.max_retries:
+                    time.sleep(self._calculate_backoff(attempt))
+                    continue
 
             except httpx.TimeoutException as e:
                 last_error = TimeoutError(f"Request timed out after {self.timeout}s")
+                if retry_unsent_only:
+                    raise last_error from e
                 if attempt < self.max_retries:
                     time.sleep(self._calculate_backoff(attempt))
                     continue
 
             except httpx.RequestError as e:
                 last_error = NetworkError(f"Network error: {str(e)}", e)
+                if retry_unsent_only:
+                    raise last_error from e
                 if attempt < self.max_retries:
                     time.sleep(self._calculate_backoff(attempt))
                     continue
@@ -364,13 +389,14 @@ class AsyncHttpClient:
             raise ValidationError("Idempotency key must be 1-255 printable ASCII characters")
         return trimmed
 
-    def _is_server_error_response(self, error: SendlyError) -> bool:
+    def _is_retryable_response(self, error: SendlyError) -> bool:
         """
-        Check if the error carries an actual 5xx response from the server,
-        as opposed to a timeout or network failure where the outcome of the
-        request is unknown
+        Check if an error response can change on a retry: a request timeout
+        (408), too early (425) or a server error (5xx). Every other status,
+        redirects included, is the API's final answer.
         """
-        return error.status_code is not None and error.status_code >= 500
+        status = error.status_code
+        return status is not None and (status in (408, 425) or status >= 500)
 
     async def request(
         self,
@@ -380,8 +406,10 @@ class AsyncHttpClient:
         params: Optional[Dict[str, Any]] = None,
         idempotency_key: Optional[str] = None,
         auto_idempotency_key: bool = True,
+        retry_unsent_only: bool = False,
     ) -> Any:
         """Make an async HTTP request to the API"""
+        _check_path_ids(path)
         explicit_key = self._normalize_idempotency_key(idempotency_key)
         key = explicit_key
         if key is None and method == "POST" and auto_idempotency_key:
@@ -409,31 +437,32 @@ class AsyncHttpClient:
             except SendlyError as e:
                 last_error = e
 
-                # Don't retry certain errors
-                if e.status_code in (400, 401, 402, 403, 404):
-                    raise
-
                 # Handle rate limiting
-                if isinstance(e, RateLimitError):
+                if isinstance(e, RateLimitError) and _waits_out(e):
                     if attempt < self.max_retries:
                         await asyncio.sleep(e.retry_after)
                         continue
                     raise
 
-                # A 5xx response may be cached by the server under the key,
-                # so rotate an auto-generated key to let the retry
-                # re-execute. Caller-supplied keys are never rotated.
-                if explicit_key is None and key is not None and self._is_server_error_response(e):
-                    key = self._generate_idempotency_key()
+                if retry_unsent_only or not self._is_retryable_response(e):
+                    raise
+
+                if attempt < self.max_retries:
+                    await asyncio.sleep(self._calculate_backoff(attempt))
+                    continue
 
             except httpx.TimeoutException as e:
                 last_error = TimeoutError(f"Request timed out after {self.timeout}s")
+                if retry_unsent_only:
+                    raise last_error from e
                 if attempt < self.max_retries:
                     await asyncio.sleep(self._calculate_backoff(attempt))
                     continue
 
             except httpx.RequestError as e:
                 last_error = NetworkError(f"Network error: {str(e)}", e)
+                if retry_unsent_only:
+                    raise last_error from e
                 if attempt < self.max_retries:
                     await asyncio.sleep(self._calculate_backoff(attempt))
                     continue

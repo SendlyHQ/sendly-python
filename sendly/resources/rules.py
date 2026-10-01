@@ -67,7 +67,9 @@ class RulesResource:
         conditions: Optional[Dict[str, Any]] = None,
         actions: Optional[Dict[str, Any]] = None,
         priority: Optional[int] = None,
+        enabled: Optional[bool] = None,
     ) -> Rule:
+        """Update a rule. Pass ``enabled=False`` to stop it applying without deleting it."""
         body: Dict[str, Any] = {}
         if name is not None:
             body["name"] = name
@@ -77,6 +79,8 @@ class RulesResource:
             body["actions"] = actions
         if priority is not None:
             body["priority"] = priority
+        if enabled is not None:
+            body["enabled"] = enabled
 
         data = self._http.request(
             method="PATCH",
@@ -156,7 +160,9 @@ class AsyncRulesResource:
         conditions: Optional[Dict[str, Any]] = None,
         actions: Optional[Dict[str, Any]] = None,
         priority: Optional[int] = None,
+        enabled: Optional[bool] = None,
     ) -> Rule:
+        """Update a rule. Pass ``enabled=False`` to stop it applying without deleting it."""
         body: Dict[str, Any] = {}
         if name is not None:
             body["name"] = name
@@ -166,6 +172,8 @@ class AsyncRulesResource:
             body["actions"] = actions
         if priority is not None:
             body["priority"] = priority
+        if enabled is not None:
+            body["enabled"] = enabled
 
         data = await self._http.request(
             method="PATCH",

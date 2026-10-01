@@ -4,10 +4,15 @@ Webhooks Resource
 Manage webhook endpoints for receiving real-time message status updates.
 """
 
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Union
 
+from pydantic import ValidationError as PydanticValidationError
+
+from ..errors import SendlyError
 from ..types import (
+    ApiErrorResponse,
     CreateWebhookOptions,
+    DeliveryStatus,
     UpdateWebhookOptions,
     Webhook,
     WebhookCreatedResponse,
@@ -67,6 +72,68 @@ def _transform_delivery_response(data: Dict[str, Any]) -> Dict[str, Any]:
     return result
 
 
+def _check_create_input(url: str, events: List[str]) -> None:
+    if not url or not url.startswith("https://"):
+        raise ValueError("Webhook URL must be HTTPS")
+    if not events:
+        raise ValueError("At least one event type is required")
+
+
+def _deliveries_params(
+    limit: Optional[int],
+    offset: Optional[int],
+    status: Optional[Union[DeliveryStatus, str]],
+) -> Optional[Dict[str, Any]]:
+    params: Dict[str, Any] = {}
+    if limit is not None:
+        params["limit"] = limit
+    if offset is not None:
+        params["offset"] = offset
+    if status is not None:
+        params["status"] = status.value if isinstance(status, DeliveryStatus) else status
+    return params or None
+
+
+def _parse_deliveries(response: Any) -> List[WebhookDelivery]:
+    items = response.get("deliveries", []) if isinstance(response, dict) else response
+    try:
+        return [WebhookDelivery(**_transform_delivery_response(d)) for d in items]
+    except PydanticValidationError as e:
+        raise SendlyError(
+            message=f"Invalid API response format: {e}",
+            code="invalid_response",
+            status_code=200,
+        ) from e
+
+
+def _transform_test_response(data: Dict[str, Any]) -> Dict[str, Any]:
+    delivery = data.get("delivery")
+    if not isinstance(delivery, dict):
+        return data
+    result = dict(data)
+    result.setdefault("statusCode", delivery.get("status_code"))
+    result.setdefault("responseTimeMs", delivery.get("response_time"))
+    result.setdefault("error", delivery.get("error"))
+    return result
+
+
+def _parse_rotation(response: Dict[str, Any]) -> WebhookSecretRotation:
+    if isinstance(response.get("webhook"), dict):
+        response = {**response, "webhook": _transform_webhook_response(response["webhook"])}
+    try:
+        return WebhookSecretRotation(**response)
+    except PydanticValidationError as e:
+        body = {k: v for k, v in response.items() if k not in ("error", "message")}
+        raise SendlyError(
+            message=f"Invalid API response format: {e}",
+            code="invalid_response",
+            status_code=200,
+            response=ApiErrorResponse(
+                error="invalid_response", message=str(response.get("message", "")), **body
+            ),
+        ) from e
+
+
 class WebhooksResource:
     """
     Webhooks API resource (synchronous)
@@ -114,14 +181,10 @@ class WebhooksResource:
             The created webhook with signing secret (shown only once!)
 
         Raises:
-            ValidationError: If the URL is invalid or events are empty
+            ValueError: If the URL is not HTTPS or events are empty
             AuthenticationError: If the API key is invalid
         """
-        if not url or not url.startswith("https://"):
-            raise ValueError("Webhook URL must be HTTPS")
-
-        if not events:
-            raise ValueError("At least one event type is required")
+        _check_create_input(url, events)
 
         body = {"url": url, "events": events}
         if description:
@@ -234,13 +297,17 @@ class WebhooksResource:
             webhook_id: Webhook ID
 
         Returns:
-            Test result with response details
+            Test result with the endpoint's status code and response time
+
+        Raises:
+            SendlyError: When the endpoint did not accept the test event (an
+                error status, a timeout or no answer); the message says why
         """
         if not webhook_id or not webhook_id.startswith("whk_"):
             raise ValueError("Invalid webhook ID format")
 
         response = self._http.request("POST", f"/webhooks/{quote(webhook_id, safe='')}/test")
-        return WebhookTestResult(**response)
+        return WebhookTestResult(**_transform_test_response(response))
 
     def reset_circuit(self, webhook_id: str) -> dict:
         """
@@ -331,8 +398,9 @@ class WebhooksResource:
         for any message whose ``message.sent`` / ``message.delivered`` /
         ``message.failed`` event has not been successfully delivered yet.
 
-        Synthesized events have fresh IDs — your endpoint should dedupe by
-        ``event.data.object.id`` (the message ID).
+        Synthesized message events carry the same event id the original
+        dispatch used, so dedupe on ``event.id``. Do not dedupe on
+        ``event.data.object.id``: a message's sent and delivered events share it.
 
         Rejects with HTTP 409 if the circuit is currently open — call
         :meth:`reset_circuit` first.
@@ -369,29 +437,44 @@ class WebhooksResource:
         """
         Rotate the webhook signing secret.
 
-        The old secret remains valid for 24 hours to allow for graceful migration.
+        Deliveries are signed with the new secret as soon as this returns, so
+        have your endpoint accept both the old and the new secret until the
+        new one is deployed.
 
         Args:
             webhook_id: Webhook ID
 
         Returns:
-            New secret and expiration info
+            The new secret (shown only once) and when it was rotated
+
+        Raises:
+            SendlyError: With code ``invalid_response`` when the response
+                cannot be read; ``e.response.model_extra`` still holds the
+                body, new secret included
         """
         if not webhook_id or not webhook_id.startswith("whk_"):
             raise ValueError("Invalid webhook ID format")
 
         response = self._http.request("POST", f"/webhooks/{quote(webhook_id, safe='')}/rotate-secret")
-        # Transform the nested webhook object
-        if "webhook" in response:
-            response["webhook"] = _transform_webhook_response(response["webhook"])
-        return WebhookSecretRotation(**response)
+        return _parse_rotation(response)
 
-    def get_deliveries(self, webhook_id: str) -> List[WebhookDelivery]:
+    def get_deliveries(
+        self,
+        webhook_id: str,
+        *,
+        limit: Optional[int] = None,
+        offset: Optional[int] = None,
+        status: Optional[Union[DeliveryStatus, str]] = None,
+    ) -> List[WebhookDelivery]:
         """
-        Get delivery history for a webhook.
+        Get delivery history for a webhook, newest first.
 
         Args:
             webhook_id: Webhook ID
+            limit: Maximum number of deliveries to return
+            offset: Number of deliveries to skip
+            status: Only return deliveries in this status: a DeliveryStatus or
+                its value (pending, delivered, failed or cancelled)
 
         Returns:
             Array of delivery attempts
@@ -399,8 +482,12 @@ class WebhooksResource:
         if not webhook_id or not webhook_id.startswith("whk_"):
             raise ValueError("Invalid webhook ID format")
 
-        response = self._http.request("GET", f"/webhooks/{quote(webhook_id, safe='')}/deliveries")
-        return [WebhookDelivery(**_transform_delivery_response(d)) for d in response]
+        response = self._http.request(
+            "GET",
+            f"/webhooks/{quote(webhook_id, safe='')}/deliveries",
+            params=_deliveries_params(limit, offset, status),
+        )
+        return _parse_deliveries(response)
 
     def retry_delivery(self, webhook_id: str, delivery_id: str) -> None:
         """
@@ -447,11 +534,7 @@ class AsyncWebhooksResource:
         metadata: Optional[Dict[str, Any]] = None,
     ) -> WebhookCreatedResponse:
         """Create a new webhook endpoint."""
-        if not url or not url.startswith("https://"):
-            raise ValueError("Webhook URL must be HTTPS")
-
-        if not events:
-            raise ValueError("At least one event type is required")
+        _check_create_input(url, events)
 
         body = {"url": url, "events": events}
         if description:
@@ -524,7 +607,7 @@ class AsyncWebhooksResource:
             raise ValueError("Invalid webhook ID format")
 
         response = await self._http.request("POST", f"/webhooks/{quote(webhook_id, safe='')}/test")
-        return WebhookTestResult(**response)
+        return WebhookTestResult(**_transform_test_response(response))
 
     async def reset_circuit(self, webhook_id: str) -> dict:
         """Reset the circuit breaker for a webhook."""
@@ -597,22 +680,38 @@ class AsyncWebhooksResource:
         )
 
     async def rotate_secret(self, webhook_id: str) -> WebhookSecretRotation:
-        """Rotate the webhook signing secret."""
+        """Rotate the webhook signing secret.
+
+        Deliveries are signed with the new secret as soon as this returns.
+        See :meth:`WebhooksResource.rotate_secret`.
+        """
         if not webhook_id or not webhook_id.startswith("whk_"):
             raise ValueError("Invalid webhook ID format")
 
         response = await self._http.request("POST", f"/webhooks/{quote(webhook_id, safe='')}/rotate-secret")
-        if "webhook" in response:
-            response["webhook"] = _transform_webhook_response(response["webhook"])
-        return WebhookSecretRotation(**response)
+        return _parse_rotation(response)
 
-    async def get_deliveries(self, webhook_id: str) -> List[WebhookDelivery]:
-        """Get delivery history for a webhook."""
+    async def get_deliveries(
+        self,
+        webhook_id: str,
+        *,
+        limit: Optional[int] = None,
+        offset: Optional[int] = None,
+        status: Optional[Union[DeliveryStatus, str]] = None,
+    ) -> List[WebhookDelivery]:
+        """Get delivery history for a webhook, newest first.
+
+        See :meth:`WebhooksResource.get_deliveries` for the filters.
+        """
         if not webhook_id or not webhook_id.startswith("whk_"):
             raise ValueError("Invalid webhook ID format")
 
-        response = await self._http.request("GET", f"/webhooks/{quote(webhook_id, safe='')}/deliveries")
-        return [WebhookDelivery(**_transform_delivery_response(d)) for d in response]
+        response = await self._http.request(
+            "GET",
+            f"/webhooks/{quote(webhook_id, safe='')}/deliveries",
+            params=_deliveries_params(limit, offset, status),
+        )
+        return _parse_deliveries(response)
 
     async def retry_delivery(self, webhook_id: str, delivery_id: str) -> None:
         """Retry a failed delivery."""

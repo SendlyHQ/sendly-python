@@ -613,3 +613,74 @@ class TestAsyncRcs:
             await client.messages.send(channel="rcs", to="+15551234567")
 
         await client.close()
+
+
+class TestRcsWireFields:
+    def test_agent_list_reads_the_stage(self, api_key, mock_agent, httpx_mock: HTTPXMock):
+        client = Sendly(api_key)
+        httpx_mock.add_response(
+            url="https://sendly.live/api/v1/rcs/agents",
+            method="GET",
+            json={"agents": [{**mock_agent, "stage": "testing"}]},
+        )
+
+        result = client.rcs.agents.list()
+
+        assert result.agents[0].stage == "testing"
+        client.close()
+
+    def test_fallback_reads_the_reason(
+        self, api_key, mock_rcs_fallback_message, httpx_mock: HTTPXMock
+    ):
+        client = Sendly(api_key)
+        httpx_mock.add_response(
+            url="https://sendly.live/api/v1/messages",
+            method="POST",
+            status_code=201,
+            json={
+                **mock_rcs_fallback_message,
+                "rcs": {
+                    "requestedChannel": "rcs",
+                    "agentId": "a1",
+                    "fallbackReason": "not_rcs_capable",
+                },
+            },
+        )
+
+        message = client.messages.send(channel="rcs", to="+15551234567", text="Hi")
+
+        assert message.rcs.fallback_reason == "not_rcs_capable"
+        client.close()
+
+
+class TestRcsContentPreCheck:
+    def test_text_and_card_raise_a_validation_error_coded_invalid_request(
+        self, api_key, httpx_mock: HTTPXMock
+    ):
+        client = Sendly(api_key)
+
+        with pytest.raises(ValidationError) as exc_info:
+            client.messages.send(
+                channel="rcs",
+                to="+15551234567",
+                text="a",
+                card={"title": "Hi", "description": "There"},
+            )
+
+        assert exc_info.value.code == "invalid_request"
+        assert exc_info.value.status_code == 400
+        assert httpx_mock.get_requests() == []
+        client.close()
+
+    @pytest.mark.asyncio
+    async def test_neither_raises_a_validation_error_coded_invalid_request_async(
+        self, api_key, httpx_mock: HTTPXMock
+    ):
+        client = AsyncSendly(api_key)
+
+        with pytest.raises(ValidationError) as exc_info:
+            await client.messages.send(channel="rcs", to="+15551234567")
+
+        assert exc_info.value.code == "invalid_request"
+        assert httpx_mock.get_requests() == []
+        await client.close()

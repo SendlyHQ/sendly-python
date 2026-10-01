@@ -4,13 +4,20 @@ Media Resource
 API resource for uploading media files for MMS.
 """
 
-from typing import Any, BinaryIO, Optional
+import os
+from typing import Any, BinaryIO, Dict, Optional, Tuple
 
 from pydantic import ValidationError as PydanticValidationError
 
 from ..errors import SendlyError
 from ..types import MediaFile
 from ..utils.http import AsyncHttpClient, HttpClient
+from .business_upgrade import _multipart_request_async, _multipart_request_sync
+
+
+def _file_part(file: BinaryIO, content_type: str) -> Dict[str, Tuple[str, bytes, str]]:
+    filename = os.path.basename(str(getattr(file, "name", "") or "")) or "upload"
+    return {"file": (filename, file.read(), content_type)}
 
 
 class MediaResource:
@@ -39,7 +46,13 @@ class MediaResource:
             The uploaded media file details
 
         Raises:
-            ValidationError: If the file is invalid
+            ValidationError: If no file reached the API (code ``invalid_request``)
+            SendlyError: With code ``invalid_file`` when content_type is
+                image/jpeg, image/png or image/gif but the content is not a
+                JPEG, PNG or GIF; ``internal_error`` (HTTP 500) when
+                content_type is any other type or the file is over 600 KB,
+                with the reason in the message; or ``feature_disabled`` when
+                MMS is not enabled for your account
             AuthenticationError: If the API key is invalid
             RateLimitError: If rate limit is exceeded
 
@@ -52,20 +65,7 @@ class MediaResource:
             ...     media_urls=[media.url]
             ... )
         """
-        filename = getattr(file, "name", "upload")
-        response = self._http.client.post(
-            "/media",
-            files={"file": (filename, file, content_type)},
-            headers={
-                "Authorization": f"Bearer {self._http.api_key}",
-                "Accept": "application/json",
-                "User-Agent": self._http.client.headers.get("User-Agent", ""),
-                "Idempotency-Key": self._http._generate_idempotency_key(),
-            },
-        )
-
-        self._http._update_rate_limit_info(response.headers)
-        data = self._http._parse_response(response)
+        data = _multipart_request_sync(self._http, "/media", {}, _file_part(file, content_type))
 
         try:
             return MediaFile(**data)
@@ -102,6 +102,9 @@ class AsyncMediaResource:
         Returns:
             The uploaded media file details
 
+        Raises:
+            SendlyError: The errors :meth:`MediaResource.upload` lists
+
         Example:
             >>> with open('photo.jpg', 'rb') as f:
             ...     media = await client.media.upload(f, content_type='image/jpeg')
@@ -111,20 +114,9 @@ class AsyncMediaResource:
             ...     media_urls=[media.url]
             ... )
         """
-        filename = getattr(file, "name", "upload")
-        response = await self._http.client.post(
-            "/media",
-            files={"file": (filename, file, content_type)},
-            headers={
-                "Authorization": f"Bearer {self._http.api_key}",
-                "Accept": "application/json",
-                "User-Agent": self._http.client.headers.get("User-Agent", ""),
-                "Idempotency-Key": self._http._generate_idempotency_key(),
-            },
+        data = await _multipart_request_async(
+            self._http, "/media", {}, _file_part(file, content_type)
         )
-
-        self._http._update_rate_limit_info(response.headers)
-        data = self._http._parse_response(response)
 
         try:
             return MediaFile(**data)

@@ -11,6 +11,7 @@ from sendly.types import (
     AvailableNumbersResponse,
     BuyNumberResponse,
     NumberCountriesResponse,
+    OwnedNumber,
     OwnedNumbersResponse,
 )
 
@@ -344,3 +345,104 @@ class TestAsyncNumbers:
         assert result.status == "provisioning"
 
         await client.close()
+
+
+PROVISIONED_TOLL_FREE = {
+    "id": "num_tf",
+    "phoneNumber": "+18885550100",
+    "status": "active",
+    "source": "provisioned",
+    "countryCode": "US",
+    "phoneNumberType": "toll_free",
+    "monthlyCostCents": None,
+    "requirementsSubmittedAt": None,
+    "pendingCancellation": False,
+    "scheduledReleaseAt": None,
+    "voiceEnabled": False,
+    "voiceMode": "none",
+}
+
+UNTYPED_PURCHASE = {
+    "id": "num_de",
+    "phoneNumber": "+4930120000001",
+    "status": "active",
+    "source": "purchased",
+    "countryCode": None,
+    "phoneNumberType": None,
+    "monthlyCostCents": 400,
+    "requirementsSubmittedAt": None,
+    "pendingCancellation": False,
+    "scheduledReleaseAt": None,
+    "voiceEnabled": False,
+    "voiceMode": "none",
+}
+
+
+class TestNumbersWithoutRecordedValues:
+    def test_list_keeps_a_number_without_a_price(
+        self, api_key, mock_owned, httpx_mock: HTTPXMock
+    ):
+        client = Sendly(api_key)
+        httpx_mock.add_response(
+            url="https://sendly.live/api/v1/numbers",
+            method="GET",
+            json={"numbers": mock_owned["numbers"] + [PROVISIONED_TOLL_FREE]},
+        )
+
+        result = client.numbers.list()
+
+        assert len(result.numbers) == 2
+        assert result.numbers[0].monthly_cost_cents == 350
+        assert result.numbers[0].reported_monthly_cost_cents == 350
+        toll_free = result.numbers[1]
+        assert toll_free.country_code == "US"
+        assert toll_free.phone_number_type == "toll_free"
+        assert toll_free.monthly_cost_cents == 0
+        assert toll_free.reported_monthly_cost_cents is None
+        client.close()
+
+    def test_a_number_without_a_country_or_type_reads_empty_strings(
+        self, api_key, httpx_mock: HTTPXMock
+    ):
+        client = Sendly(api_key)
+        httpx_mock.add_response(
+            url="https://sendly.live/api/v1/numbers",
+            method="GET",
+            json={"numbers": [UNTYPED_PURCHASE]},
+        )
+
+        number = client.numbers.list().numbers[0]
+
+        assert number.country_code == ""
+        assert number.phone_number_type == ""
+        assert number.monthly_cost_cents == 400
+        client.close()
+
+    @pytest.mark.asyncio
+    async def test_get_number_without_a_price_async(self, api_key, httpx_mock: HTTPXMock):
+        client = AsyncSendly(api_key)
+        httpx_mock.add_response(
+            url="https://sendly.live/api/v1/numbers/num_tf",
+            method="GET",
+            json={**PROVISIONED_TOLL_FREE, "isDefault": True},
+        )
+
+        number = await client.numbers.get("num_tf")
+
+        assert number.phone_number == "+18885550100"
+        assert number.is_default is True
+        assert number.monthly_cost_cents == 0
+        assert number.reported_monthly_cost_cents is None
+        await client.close()
+
+    def test_fields_keep_their_4_2_types(self):
+        fields = OwnedNumber.model_fields
+
+        assert fields["country_code"].annotation is str
+        assert fields["phone_number_type"].annotation is str
+        assert fields["monthly_cost_cents"].annotation is int
+
+    def test_the_reported_price_stays_out_of_dumps(self):
+        number = OwnedNumber(**PROVISIONED_TOLL_FREE)
+
+        assert "reported_monthly_cost_cents" not in number.model_dump()

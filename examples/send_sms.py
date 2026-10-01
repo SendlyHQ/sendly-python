@@ -23,7 +23,9 @@ def main():
         text="Hello from Sendly! This is a test message.",
     )
     print(f"   Message ID: {message.id}")
-    print(f"   Status: {message.status}")
+    print(f"   Status: {message.status.value}")
+    # Every send reports its segment count and charge; a simulated send (test
+    # key or sandbox number) is charged 0 credits
     print(f"   Segments: {message.segments}")
     print(f"   Credits Used: {message.credits_used}\n")
 

@@ -30,7 +30,7 @@ async def main():
         messages = await asyncio.gather(*tasks)
 
         for msg in messages:
-            print(f"   Sent: {msg.id} - {msg.status}")
+            print(f"   Sent: {msg.id} - {msg.status.value}")
         print()
 
         # Example 2: Send and immediately check status
@@ -41,7 +41,7 @@ async def main():
         result = await client.messages.list(limit=5)
         print(f"   Found {result.count} recent messages:")
         for msg in result.data[:3]:
-            print(f"   - {msg.to}: {msg.status}")
+            print(f"   - {msg.to}: {msg.status.value}")
         print()
 
         # Example 3: Get specific message
@@ -49,7 +49,7 @@ async def main():
         if result.data:
             msg = await client.messages.get(result.data[0].id)
             print(f"   ID: {msg.id}")
-            print(f"   Status: {msg.status}")
+            print(f"   Status: {msg.status.value}")
             print(f"   Created: {msg.created_at}")
 
     print("\nDone!")

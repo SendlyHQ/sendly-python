@@ -164,12 +164,12 @@ class TestSendBatch:
         client.close()
 
     def test_send_batch_validation_error_too_many_messages(self, api_key):
-        """Test send_batch with more than 1000 messages"""
+        """Test send_batch with more than 10,000 messages"""
         client = Sendly(api_key)
 
-        messages = [{"to": f"+1555{i:07d}", "text": f"Message {i}"} for i in range(1001)]
+        messages = [{"to": f"+1555{i:07d}", "text": f"Message {i}"} for i in range(10001)]
 
-        with pytest.raises(SendlyError, match="Maximum 1000 messages per batch"):
+        with pytest.raises(SendlyError, match="Maximum 10,000 messages per batch"):
             client.messages.send_batch(messages=messages)
 
         client.close()

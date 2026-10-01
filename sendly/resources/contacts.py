@@ -12,9 +12,33 @@ from ..types import (
     ContactListsResponse,
     ImportContactItem,
     ImportContactsResponse,
+    UpdatedContact,
 )
 from ..utils.http import AsyncHttpClient, HttpClient
 from urllib.parse import quote
+
+
+def _pick(data: Dict[str, Any], snake: str, camel: str) -> Any:
+    if data.get(snake) is not None:
+        return data[snake]
+    return data.get(camel)
+
+
+def _updated_contact(data: Dict[str, Any]) -> UpdatedContact:
+    return UpdatedContact(
+        id=data["id"],
+        phone_number=_pick(data, "phone_number", "phoneNumber"),
+        name=data.get("name"),
+        email=data.get("email"),
+        metadata=data.get("metadata"),
+        line_type=_pick(data, "line_type", "lineType"),
+        carrier_name=_pick(data, "carrier_name", "carrierName"),
+        line_type_checked_at=_pick(data, "line_type_checked_at", "lineTypeCheckedAt"),
+        invalid_reason=_pick(data, "invalid_reason", "invalidReason"),
+        invalidated_at=_pick(data, "invalidated_at", "invalidatedAt"),
+        user_marked_valid_at=_pick(data, "user_marked_valid_at", "userMarkedValidAt"),
+        updated_at=_pick(data, "updated_at", "updatedAt"),
+    )
 
 
 class ContactListsResource:
@@ -205,8 +229,14 @@ class ContactsResource:
         name: Optional[str] = None,
         email: Optional[str] = None,
         metadata: Optional[Dict[str, Any]] = None,
-    ) -> Contact:
-        """Update a contact"""
+    ) -> UpdatedContact:
+        """Update a contact
+
+        Returns:
+            The contact as saved. The response does not report whether the
+            contact has opted out, its lists or when it was created; read
+            those with :meth:`get`
+        """
         body: Dict[str, Any] = {}
         if name is not None:
             body["name"] = name
@@ -216,7 +246,7 @@ class ContactsResource:
             body["metadata"] = metadata
 
         data = self._http.request("PATCH", f"/contacts/{quote(contact_id, safe='')}", body=body)
-        return self._transform_contact(data)
+        return _updated_contact(data)
 
     def delete(self, contact_id: str) -> None:
         """Delete a contact"""
@@ -506,8 +536,13 @@ class AsyncContactsResource:
         name: Optional[str] = None,
         email: Optional[str] = None,
         metadata: Optional[Dict[str, Any]] = None,
-    ) -> Contact:
-        """Update a contact"""
+    ) -> UpdatedContact:
+        """Update a contact
+
+        Returns:
+            The contact as saved, without its opt-out status, lists or
+            creation time; see :meth:`ContactsResource.update`
+        """
         body: Dict[str, Any] = {}
         if name is not None:
             body["name"] = name
@@ -517,7 +552,7 @@ class AsyncContactsResource:
             body["metadata"] = metadata
 
         data = await self._http.request("PATCH", f"/contacts/{quote(contact_id, safe='')}", body=body)
-        return self._transform_contact(data)
+        return _updated_contact(data)
 
     async def delete(self, contact_id: str) -> None:
         """Delete a contact"""

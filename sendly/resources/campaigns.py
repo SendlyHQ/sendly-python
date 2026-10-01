@@ -4,13 +4,95 @@ Campaigns Resource - Bulk SMS Campaign Management
 
 from typing import Any, Dict, List, Optional
 
+from pydantic import ValidationError as PydanticValidationError
+
+from ..errors import SendlyError
 from ..types import (
     Campaign,
     CampaignListResponse,
     CampaignPreview,
+    CampaignSendResult,
 )
 from ..utils.http import AsyncHttpClient, HttpClient
 from urllib.parse import quote
+
+
+def _pick(data: Dict[str, Any], *keys: str, default: Any = None) -> Any:
+    for key in keys:
+        if data.get(key) is not None:
+            return data[key]
+    return default
+
+
+def _invalid_response(e: PydanticValidationError) -> SendlyError:
+    return SendlyError(
+        message=f"Invalid API response format: {e}",
+        code="invalid_response",
+        status_code=200,
+    )
+
+
+def _campaign(data: Dict[str, Any]) -> Campaign:
+    list_ids = data.get("contact_list_ids")
+    if list_ids is None:
+        list_ids = [data["targetListId"]] if data.get("targetListId") else []
+    try:
+        return Campaign(
+            id=data["id"],
+            name=data["name"],
+            text=_pick(data, "text", "messageText"),
+            template_id=_pick(data, "template_id", "templateId"),
+            contact_list_ids=list_ids,
+            status=data["status"],
+            recipient_count=_pick(data, "recipient_count", "totalRecipients", default=0),
+            sent_count=_pick(data, "sent_count", "sentCount", default=0),
+            delivered_count=_pick(data, "delivered_count", "deliveredCount", default=0),
+            failed_count=_pick(data, "failed_count", "failedCount", default=0),
+            estimated_credits=_pick(data, "estimated_credits", "estimatedCredits", default=0),
+            credits_used=_pick(data, "credits_used", "creditsUsed", default=0),
+            scheduled_at=_pick(data, "scheduled_at", "scheduledAt"),
+            timezone=data.get("timezone"),
+            started_at=_pick(data, "started_at", "sentAt"),
+            completed_at=_pick(data, "completed_at", "completedAt"),
+            created_at=_pick(data, "created_at", "createdAt"),
+            updated_at=_pick(data, "updated_at", "updatedAt"),
+        )
+    except PydanticValidationError as e:
+        raise _invalid_response(e) from e
+
+
+def _preview(campaign_id: str, data: Dict[str, Any]) -> CampaignPreview:
+    try:
+        return CampaignPreview(
+            id=_pick(data, "id", default=campaign_id),
+            recipient_count=_pick(
+                data, "recipient_count", "recipientCount", "totalRecipients", default=0
+            ),
+            estimated_segments=data.get("estimated_segments"),
+            estimated_credits=_pick(data, "estimated_credits", "estimatedCredits", default=0),
+            current_balance=_pick(data, "current_balance", "currentBalance", default=0),
+            has_enough_credits=_pick(
+                data, "has_enough_credits", "hasEnoughCredits", default=False
+            ),
+            breakdown=data.get("breakdown"),
+            blocked_count=_pick(data, "blocked_count", "blockedCount"),
+            sendable_count=_pick(data, "sendable_count", "sendableCount"),
+            by_country=_pick(data, "by_country", "byCountry"),
+            warnings=data.get("warnings"),
+            messaging_profile=_pick(data, "messaging_profile", "messagingProfile"),
+            opted_out_count=_pick(data, "opted_out_count", "optedOutCount"),
+            invalid_count=_pick(data, "invalid_count", "invalidCount"),
+            sample_recipients=_pick(data, "sample_recipients", "sampleRecipients"),
+        )
+    except PydanticValidationError as e:
+        raise _invalid_response(e) from e
+
+
+def _send_result(data: Dict[str, Any]) -> CampaignSendResult:
+    try:
+        return CampaignSendResult(**data)
+    except PydanticValidationError as e:
+        raise _invalid_response(e) from e
 
 
 class CampaignsResource:
@@ -41,7 +123,9 @@ class CampaignsResource:
         Args:
             name: Campaign name
             text: Message text with optional {{variables}}
-            contact_list_ids: List IDs to send to
+            contact_list_ids: One contact list ID, in a one-element list. A
+                campaign targets one list; the API answers 400 invalid_request
+                to more than one
             template_id: Optional template ID
 
         Returns:
@@ -69,7 +153,8 @@ class CampaignsResource:
         Args:
             limit: Max campaigns to return
             offset: Pagination offset
-            status: Filter by status (draft, scheduled, sending, sent, cancelled)
+            status: Filter by status (draft, scheduled, sending, completed,
+                cancelled or failed; 'sent' also lists completed campaigns)
 
         Returns:
             List of campaigns with pagination
@@ -104,7 +189,17 @@ class CampaignsResource:
         template_id: Optional[str] = None,
         contact_list_ids: Optional[List[str]] = None,
     ) -> Campaign:
-        """Update a campaign (draft or scheduled only)"""
+        """Update a campaign (draft or scheduled only)
+
+        Args:
+            campaign_id: Campaign ID
+            name: Campaign name
+            text: Message text with optional {{variables}}
+            template_id: Optional template ID
+            contact_list_ids: One contact list ID, in a one-element list. A
+                campaign targets one list; the API answers 400 invalid_request
+                to more than one
+        """
         body: Dict[str, Any] = {}
         if name is not None:
             body["name"] = name
@@ -125,23 +220,28 @@ class CampaignsResource:
     def preview(self, campaign_id: str) -> CampaignPreview:
         """Preview campaign before sending
 
-        Returns recipient count, credit estimate, and breakdown.
+        Returns recipient count, credit estimate, balance, and a per-country
+        breakdown.
         """
         data = self._http.request("GET", f"/campaigns/{quote(campaign_id, safe='')}/preview")
-        return CampaignPreview(
-            id=data["id"],
-            recipient_count=data["recipient_count"],
-            estimated_segments=data["estimated_segments"],
-            estimated_credits=data["estimated_credits"],
-            current_balance=data["current_balance"],
-            has_enough_credits=data["has_enough_credits"],
-            breakdown=data.get("breakdown"),
-        )
+        return _preview(campaign_id, data)
 
-    def send(self, campaign_id: str) -> Campaign:
-        """Send a campaign immediately"""
-        data = self._http.request("POST", f"/campaigns/{quote(campaign_id, safe='')}/send")
-        return self._transform_campaign(data)
+    def send(self, campaign_id: str, from_: Optional[str] = None) -> CampaignSendResult:
+        """Send a campaign immediately
+
+        Args:
+            campaign_id: Campaign ID
+            from_: Optional number of yours to send from
+
+        Returns:
+            The batch the messages went out in. Call :meth:`get` for the
+            campaign itself
+        """
+        body = {"from": from_} if from_ else None
+        data = self._http.request(
+            "POST", f"/campaigns/{quote(campaign_id, safe='')}/send", body=body
+        )
+        return _send_result(data)
 
     def schedule(
         self,
@@ -174,26 +274,7 @@ class CampaignsResource:
         return self._transform_campaign(data)
 
     def _transform_campaign(self, data: Dict[str, Any]) -> Campaign:
-        return Campaign(
-            id=data["id"],
-            name=data["name"],
-            text=data["text"],
-            template_id=data.get("template_id"),
-            contact_list_ids=data.get("contact_list_ids", []),
-            status=data["status"],
-            recipient_count=data.get("recipient_count", 0),
-            sent_count=data.get("sent_count", 0),
-            delivered_count=data.get("delivered_count", 0),
-            failed_count=data.get("failed_count", 0),
-            estimated_credits=data.get("estimated_credits", 0),
-            credits_used=data.get("credits_used", 0),
-            scheduled_at=data.get("scheduled_at"),
-            timezone=data.get("timezone"),
-            started_at=data.get("started_at"),
-            completed_at=data.get("completed_at"),
-            created_at=data["created_at"],
-            updated_at=data["updated_at"],
-        )
+        return _campaign(data)
 
 
 class AsyncCampaignsResource:
@@ -209,7 +290,16 @@ class AsyncCampaignsResource:
         contact_list_ids: List[str],
         template_id: Optional[str] = None,
     ) -> Campaign:
-        """Create a new campaign (draft)"""
+        """Create a new campaign (draft)
+
+        Args:
+            name: Campaign name
+            text: Message text with optional {{variables}}
+            contact_list_ids: One contact list ID, in a one-element list. A
+                campaign targets one list; the API answers 400 invalid_request
+                to more than one
+            template_id: Optional template ID
+        """
         body: Dict[str, Any] = {
             "name": name,
             "text": text,
@@ -258,7 +348,17 @@ class AsyncCampaignsResource:
         template_id: Optional[str] = None,
         contact_list_ids: Optional[List[str]] = None,
     ) -> Campaign:
-        """Update a campaign (draft or scheduled only)"""
+        """Update a campaign (draft or scheduled only)
+
+        Args:
+            campaign_id: Campaign ID
+            name: Campaign name
+            text: Message text with optional {{variables}}
+            template_id: Optional template ID
+            contact_list_ids: One contact list ID, in a one-element list. A
+                campaign targets one list; the API answers 400 invalid_request
+                to more than one
+        """
         body: Dict[str, Any] = {}
         if name is not None:
             body["name"] = name
@@ -279,20 +379,19 @@ class AsyncCampaignsResource:
     async def preview(self, campaign_id: str) -> CampaignPreview:
         """Preview campaign before sending"""
         data = await self._http.request("GET", f"/campaigns/{quote(campaign_id, safe='')}/preview")
-        return CampaignPreview(
-            id=data["id"],
-            recipient_count=data["recipient_count"],
-            estimated_segments=data["estimated_segments"],
-            estimated_credits=data["estimated_credits"],
-            current_balance=data["current_balance"],
-            has_enough_credits=data["has_enough_credits"],
-            breakdown=data.get("breakdown"),
-        )
+        return _preview(campaign_id, data)
 
-    async def send(self, campaign_id: str) -> Campaign:
-        """Send a campaign immediately"""
-        data = await self._http.request("POST", f"/campaigns/{quote(campaign_id, safe='')}/send")
-        return self._transform_campaign(data)
+    async def send(self, campaign_id: str, from_: Optional[str] = None) -> CampaignSendResult:
+        """Send a campaign immediately
+
+        Returns the batch the messages went out in; see
+        :meth:`CampaignsResource.send`.
+        """
+        body = {"from": from_} if from_ else None
+        data = await self._http.request(
+            "POST", f"/campaigns/{quote(campaign_id, safe='')}/send", body=body
+        )
+        return _send_result(data)
 
     async def schedule(
         self,
@@ -319,23 +418,4 @@ class AsyncCampaignsResource:
         return self._transform_campaign(data)
 
     def _transform_campaign(self, data: Dict[str, Any]) -> Campaign:
-        return Campaign(
-            id=data["id"],
-            name=data["name"],
-            text=data["text"],
-            template_id=data.get("template_id"),
-            contact_list_ids=data.get("contact_list_ids", []),
-            status=data["status"],
-            recipient_count=data.get("recipient_count", 0),
-            sent_count=data.get("sent_count", 0),
-            delivered_count=data.get("delivered_count", 0),
-            failed_count=data.get("failed_count", 0),
-            estimated_credits=data.get("estimated_credits", 0),
-            credits_used=data.get("credits_used", 0),
-            scheduled_at=data.get("scheduled_at"),
-            timezone=data.get("timezone"),
-            started_at=data.get("started_at"),
-            completed_at=data.get("completed_at"),
-            created_at=data["created_at"],
-            updated_at=data["updated_at"],
-        )
+        return _campaign(data)

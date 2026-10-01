@@ -4,9 +4,12 @@ Account Resource
 Access account information, credit balance, and API keys.
 """
 
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Literal, Optional, Union
 
-from ..types import Account, ApiKey, Credits, CreditTransaction
+from pydantic import ValidationError as PydanticValidationError
+
+from ..errors import SendlyError
+from ..types import Account, ApiKey, Credits, CreditTransaction, TransactionType
 from ..utils.http import AsyncHttpClient, HttpClient
 from urllib.parse import quote
 
@@ -43,6 +46,84 @@ ACCOUNT_KEY_MAP = {
     "created_at": "createdAt",
 }
 
+ACCOUNT_BLOCKS = ("organization", "credits", "verification", "apiKey", "limits")
+
+
+def _invalid_response(e: PydanticValidationError) -> SendlyError:
+    return SendlyError(
+        message=f"Invalid API response format: {e}",
+        code="invalid_response",
+        status_code=200,
+    )
+
+
+def _numeric(value: Any) -> Any:
+    if isinstance(value, str):
+        try:
+            return int(value)
+        except ValueError:
+            return value
+    return value
+
+
+def _account(response: Dict[str, Any]) -> Account:
+    user = response.get("user")
+    payload = dict(user) if isinstance(user, dict) else dict(response)
+    for block in ACCOUNT_BLOCKS:
+        if block in response:
+            payload[block] = response[block]
+    credits = payload.get("credits")
+    if isinstance(credits, dict):
+        payload["credits"] = {k: _numeric(v) for k, v in credits.items()}
+    try:
+        return Account(**_transform_response(payload, ACCOUNT_KEY_MAP))
+    except PydanticValidationError as e:
+        raise _invalid_response(e) from e
+
+
+def _transactions_params(
+    limit: Optional[int],
+    offset: Optional[int],
+    type: Optional[Union[TransactionType, str]],
+) -> Dict[str, Any]:
+    params: Dict[str, Any] = {}
+    if limit is not None:
+        params["limit"] = limit
+    if offset is not None:
+        params["offset"] = offset
+    if type is not None:
+        params["type"] = type.value if isinstance(type, TransactionType) else type
+    return params
+
+
+def _transactions(response: Any) -> List[CreditTransaction]:
+    items = response.get("transactions", []) if isinstance(response, dict) else response
+    try:
+        return [CreditTransaction(**_transform_response(t, TRANSACTION_KEY_MAP)) for t in items]
+    except PydanticValidationError as e:
+        raise _invalid_response(e) from e
+
+
+def _create_key_body(
+    name: str,
+    expires_at: Optional[str],
+    type: Optional[str],
+    scopes: Optional[List[str]],
+) -> Dict[str, Any]:
+    if not name:
+        raise ValueError("API key name is required")
+    if type is not None and type not in ("test", "live"):
+        raise ValueError("type must be 'test' or 'live'")
+
+    body: Dict[str, Any] = {"name": name}
+    if type is not None:
+        body["type"] = type
+    if scopes is not None:
+        body["scopes"] = scopes
+    if expires_at:
+        body["expiresAt"] = expires_at
+    return body
+
 
 class AccountResource:
     """
@@ -73,7 +154,7 @@ class AccountResource:
             Account details
         """
         response = self._http.request("GET", "/account")
-        return Account(**_transform_response(response, ACCOUNT_KEY_MAP))
+        return _account(response)
 
     def get_credits(self) -> Credits:
         """
@@ -86,26 +167,25 @@ class AccountResource:
         return Credits(**_transform_response(response, CREDITS_KEY_MAP))
 
     def get_credit_transactions(
-        self, limit: Optional[int] = None, offset: Optional[int] = None
+        self,
+        limit: Optional[int] = None,
+        offset: Optional[int] = None,
+        type: Optional[Union[TransactionType, str]] = None,
     ) -> List[CreditTransaction]:
         """
-        Get credit transaction history.
+        Get credit transaction history, newest first.
 
         Args:
             limit: Maximum number of transactions to return
             offset: Number of transactions to skip
+            type: Only return transactions of this type (e.g. ``'refund'``)
 
         Returns:
             Array of credit transactions
         """
-        params = {}
-        if limit is not None:
-            params["limit"] = limit
-        if offset is not None:
-            params["offset"] = offset
-
+        params = _transactions_params(limit, offset, type)
         response = self._http.request("GET", "/credits/transactions", params=params)
-        return [CreditTransaction(**_transform_response(t, TRANSACTION_KEY_MAP)) for t in response]
+        return _transactions(response)
 
     def transfer_credits(self, target_organization_id: str, amount: int) -> Dict[str, Any]:
         if not target_organization_id:
@@ -158,28 +238,42 @@ class AccountResource:
         response = self._http.request("GET", f"/account/keys/{quote(key_id, safe='')}/usage")
         return response
 
-    def create_api_key(self, name: str, expires_at: Optional[str] = None) -> Dict[str, Any]:
+    def create_api_key(
+        self,
+        name: str,
+        expires_at: Optional[str] = None,
+        *,
+        type: Optional[Literal["test", "live"]] = None,
+        scopes: Optional[List[str]] = None,
+    ) -> Dict[str, Any]:
         """
         Create a new API key.
 
+        Creates a test key unless ``type`` is ``'live'``. A live key needs a
+        verified business and a credit balance: the API answers 403
+        ``verification_required`` or 402 ``credits_required`` otherwise.
+
         Args:
             name: Display name for the API key
-            expires_at: Optional expiration date (ISO 8601)
+            expires_at: Optional expiration date (ISO 8601, in the future)
+            type: ``'test'`` or ``'live'``; the API creates a test key when omitted
+            scopes: Scopes to grant the key. Omitted, the key gets the calling
+                key's scopes; asking for a scope the calling key does not have
+                is refused with 403 ``insufficient_permissions``
 
         Returns:
-            Dict with 'apiKey' (ApiKey metadata) and 'key' (full secret key - only shown once)
+            Dict with 'key' (full secret key - only shown once), 'apiKey'
+            (the key's metadata) and the key's 'id', 'name', 'type',
+            'keyPrefix', 'createdAt' and 'expiresAt'
+
+        Raises:
+            ValueError: If name is empty or type is not 'test' or 'live'
 
         Example:
-            >>> result = client.account.create_api_key('Production')
+            >>> result = client.account.create_api_key('Production', type='live')
             >>> print(f"Save this key: {result['key']}")  # Only shown once!
         """
-        if not name:
-            raise ValueError("API key name is required")
-
-        body: Dict[str, Any] = {"name": name}
-        if expires_at:
-            body["expiresAt"] = expires_at
-
+        body = _create_key_body(name, expires_at, type, scopes)
         response = self._http.request("POST", "/account/keys", body=body)
         return response
 
@@ -245,7 +339,7 @@ class AsyncAccountResource:
     async def get(self) -> Account:
         """Get account information."""
         response = await self._http.request("GET", "/account")
-        return Account(**_transform_response(response, ACCOUNT_KEY_MAP))
+        return _account(response)
 
     async def get_credits(self) -> Credits:
         """Get credit balance."""
@@ -253,17 +347,15 @@ class AsyncAccountResource:
         return Credits(**_transform_response(response, CREDITS_KEY_MAP))
 
     async def get_credit_transactions(
-        self, limit: Optional[int] = None, offset: Optional[int] = None
+        self,
+        limit: Optional[int] = None,
+        offset: Optional[int] = None,
+        type: Optional[Union[TransactionType, str]] = None,
     ) -> List[CreditTransaction]:
-        """Get credit transaction history."""
-        params = {}
-        if limit is not None:
-            params["limit"] = limit
-        if offset is not None:
-            params["offset"] = offset
-
+        """Get credit transaction history, newest first, optionally of one ``type``."""
+        params = _transactions_params(limit, offset, type)
         response = await self._http.request("GET", "/credits/transactions", params=params)
-        return [CreditTransaction(**_transform_response(t, TRANSACTION_KEY_MAP)) for t in response]
+        return _transactions(response)
 
     async def transfer_credits(self, target_organization_id: str, amount: int) -> Dict[str, Any]:
         if not target_organization_id:
@@ -293,24 +385,32 @@ class AsyncAccountResource:
         response = await self._http.request("GET", f"/account/keys/{quote(key_id, safe='')}/usage")
         return response
 
-    async def create_api_key(self, name: str, expires_at: Optional[str] = None) -> Dict[str, Any]:
+    async def create_api_key(
+        self,
+        name: str,
+        expires_at: Optional[str] = None,
+        *,
+        type: Optional[Literal["test", "live"]] = None,
+        scopes: Optional[List[str]] = None,
+    ) -> Dict[str, Any]:
         """
         Create a new API key (async).
 
+        See :meth:`AccountResource.create_api_key`: a test key unless ``type``
+        is ``'live'``, which needs a verified business and a credit balance.
+
         Args:
             name: Display name for the API key
-            expires_at: Optional expiration date (ISO 8601)
+            expires_at: Optional expiration date (ISO 8601, in the future)
+            type: ``'test'`` or ``'live'``; the API creates a test key when omitted
+            scopes: Scopes to grant the key; omitted, it gets the calling key's scopes
 
         Returns:
-            Dict with 'apiKey' (ApiKey metadata) and 'key' (full secret key - only shown once)
+            Dict with 'key' (full secret key - only shown once), 'apiKey'
+            (the key's metadata) and the key's 'id', 'name', 'type',
+            'keyPrefix', 'createdAt' and 'expiresAt'
         """
-        if not name:
-            raise ValueError("API key name is required")
-
-        body: Dict[str, Any] = {"name": name}
-        if expires_at:
-            body["expiresAt"] = expires_at
-
+        body = _create_key_body(name, expires_at, type, scopes)
         response = await self._http.request("POST", "/account/keys", body=body)
         return response
 

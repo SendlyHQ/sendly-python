@@ -65,6 +65,7 @@ from .types import (
     ALL_SUPPORTED_COUNTRIES,
     # Constants
     CREDITS_PER_SMS,
+    MAX_BATCH_MESSAGES,
     # Conversation types
     Conversation,
     ConversationListResponse,
@@ -120,6 +121,7 @@ from .types import (
     Message,
     MessageAnalytics,
     MessageAnalyticsDataPoint,
+    MessageListPagination,
     MessageListResponse,
     MessageStatus,
     # Numbers types
@@ -136,6 +138,7 @@ from .types import (
     # Group MMS + AI types
     EnhanceMessageResponse,
     GroupMessageResponse,
+    GroupRecipient,
     SendGroupMessageRequest,
     # URL shortener types
     CreateShortLinkResponse,
@@ -162,6 +165,9 @@ from .types import (
     WhatsAppSender,
     WhatsAppSenderListResponse,
     WhatsAppSenderProfile,
+    WhatsAppCommand,
+    WhatsAppConversationalComponents,
+    WhatsAppCallingSettings,
     WhatsAppSignup,
     WhatsAppSignupSession,
     WhatsAppTemplate,
@@ -202,6 +208,7 @@ from .types import (
     CallDirection,
     CallHandledBy,
     CallKind,
+    CallChannel,
     CallListResponse,
     CallPagination,
     CallRecording,
@@ -288,6 +295,7 @@ __all__ = [
     "MessageStatus",
     "SenderType",
     "ListMessagesOptions",
+    "MessageListPagination",
     "MessageListResponse",
     "RateLimitInfo",
     "PricingTier",
@@ -309,6 +317,7 @@ __all__ = [
     "ApiKey",
     # Constants
     "CREDITS_PER_SMS",
+    "MAX_BATCH_MESSAGES",
     "SUPPORTED_COUNTRIES",
     "ALL_SUPPORTED_COUNTRIES",
     "SANDBOX_TEST_NUMBERS",
@@ -378,6 +387,7 @@ __all__ = [
     # Group MMS + AI types
     "EnhanceMessageResponse",
     "GroupMessageResponse",
+    "GroupRecipient",
     "SendGroupMessageRequest",
     # URL shortener types
     "CreateShortLinkResponse",
@@ -404,6 +414,9 @@ __all__ = [
     "WhatsAppSender",
     "WhatsAppSenderListResponse",
     "WhatsAppSenderProfile",
+    "WhatsAppCommand",
+    "WhatsAppConversationalComponents",
+    "WhatsAppCallingSettings",
     "WhatsAppSignup",
     "WhatsAppSignupSession",
     "WhatsAppTemplate",
@@ -444,6 +457,7 @@ __all__ = [
     "CallDirection",
     "CallHandledBy",
     "CallKind",
+    "CallChannel",
     "CallListResponse",
     "CallPagination",
     "CallRecording",

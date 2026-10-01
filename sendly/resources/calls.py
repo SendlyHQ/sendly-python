@@ -77,7 +77,9 @@ class CallsResource:
                 the API always have an agent on the line.
             from_: A voice-enabled number in your workspace. Optional
                 when exactly one number is voice-enabled; required when
-                several are (``from_number_required``).
+                several are (``from_number_required``). Calls can only be
+                placed from US and Canadian numbers
+                (``from_number_not_supported`` otherwise).
             context: Up to 2000 characters added to the agent's instructions
                 for this call only, for example who is being called and why.
                 Not echoed back.
@@ -95,7 +97,9 @@ class CallsResource:
             InsufficientCreditsError: The balance cannot cover one minute at
                 the agent rate (``credits_needed``, ``current_balance``).
             SendlyError: With ``code`` ``agent_not_found``, ``agent_disabled``,
-                ``no_voice_number``, ``number_not_found``, ``e911_required``
+                ``no_voice_number``, ``number_not_found``,
+                ``from_number_required``, ``from_number_not_supported``,
+                ``e911_required``
                 (register an emergency address for the number first with
                 ``client.voice.numbers.register_emergency_address``),
                 ``lines_busy`` (retry shortly), ``daily_call_limit``,

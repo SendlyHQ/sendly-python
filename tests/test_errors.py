@@ -536,3 +536,136 @@ class TestApiErrorResponse:
         assert response.credits_needed is None
         assert response.current_balance is None
         assert response.retry_after is None
+
+
+class TestErrorBodiesWithoutMessage:
+    def test_code_only_body_is_a_not_found_error(self):
+        error = SendlyError.from_response(404, {"error": "not_found"})
+
+        assert isinstance(error, NotFoundError)
+        assert error.code == "not_found"
+        assert error.status_code == 404
+
+    def test_sentence_body_takes_its_code_from_the_status(self):
+        error = SendlyError.from_response(400, {"error": "sourceWorkspaceId is required"})
+
+        assert isinstance(error, ValidationError)
+        assert error.code == "invalid_request"
+        assert error.message == "sourceWorkspaceId is required"
+        assert error.response.error == "sourceWorkspaceId is required"
+
+    def test_sentence_conflict_keeps_the_rest_of_the_body(self):
+        error = SendlyError.from_response(
+            409, {"error": "Workspace already has a verification", "status": "pending"}
+        )
+
+        assert error.code == "conflict"
+        assert error.message == "Workspace already has a verification"
+        assert error.response.model_extra["status"] == "pending"
+
+    def test_body_without_error_keeps_its_message(self):
+        error = SendlyError.from_response(
+            400, {"success": False, "message": "Test webhook failed: timeout"}
+        )
+
+        assert error.code == "invalid_request"
+        assert error.message == "Test webhook failed: timeout"
+        assert error.response.model_extra["success"] is False
+
+    def test_empty_body_says_which_status_it_was(self):
+        error = SendlyError.from_response(503, {})
+
+        assert error.code == "internal_error"
+        assert error.message == "HTTP 503"
+
+    def test_validation_error_code_is_a_validation_error(self):
+        error = SendlyError.from_response(
+            400, {"error": "validation_error", "message": "Name is required"}
+        )
+
+        assert isinstance(error, ValidationError)
+        assert error.code == "validation_error"
+
+    def test_explicit_code_on_a_404_is_kept(self):
+        error = SendlyError.from_response(
+            404, {"error": "voice_not_enabled", "message": "Voice is not enabled"}
+        )
+
+        assert error.code == "voice_not_enabled"
+        assert not isinstance(error, NotFoundError)
+
+    def test_feature_gate_404_raises_not_found_end_to_end(self, api_key, httpx_mock):
+        from sendly import Sendly
+
+        client = Sendly(api_key, max_retries=0)
+        httpx_mock.add_response(
+            url="https://sendly.live/api/v1/conversations",
+            method="GET",
+            status_code=404,
+            json={"error": "not_found"},
+        )
+
+        with pytest.raises(NotFoundError) as exc_info:
+            client.conversations.list()
+
+        assert exc_info.value.code == "not_found"
+        client.close()
+
+    def test_wrong_verification_code_is_a_validation_error(self):
+        error = SendlyError.from_response(
+            400,
+            {
+                "error": "invalid_code",
+                "message": "Invalid verification code",
+                "remaining_attempts": 2,
+            },
+        )
+
+        assert isinstance(error, ValidationError)
+        assert error.code == "invalid_code"
+        assert error.response.model_extra["remaining_attempts"] == 2
+
+
+class TestBodyWithAMalformedField:
+    def test_rate_limit_keeps_its_code_and_message(self):
+        error = SendlyError.from_response(
+            429,
+            {"error": "rate_limit_exceeded", "message": "Slow down", "retryAfter": "soon"},
+        )
+
+        assert isinstance(error, RateLimitError)
+        assert error.code == "rate_limit_exceeded"
+        assert error.message == "Slow down"
+        assert error.retry_after == 60
+        assert error.response.error == "rate_limit_exceeded"
+        assert error.response.message == "Slow down"
+
+    def test_insufficient_credits_keeps_its_code_and_message(self):
+        error = SendlyError.from_response(
+            402,
+            {"error": "insufficient_credits", "message": "Top up", "creditsNeeded": "two"},
+        )
+
+        assert isinstance(error, InsufficientCreditsError)
+        assert error.message == "Top up"
+        assert error.credits_needed == 0
+        assert error.current_balance == 0
+
+    def test_sentence_body_still_gets_the_status_code(self):
+        error = SendlyError.from_response(
+            400, {"error": "Amount must be positive", "currentBalance": [1]}
+        )
+
+        assert isinstance(error, ValidationError)
+        assert error.code == "invalid_request"
+        assert error.message == "Amount must be positive"
+
+
+class TestEnumsDescribeWhatTheApiReturns:
+    def test_verification_status_says_invalid_is_never_returned(self):
+        from sendly.types import VerificationStatus
+
+        doc = VerificationStatus.__doc__ or ""
+
+        assert "INVALID" in doc
+        assert "never" in doc

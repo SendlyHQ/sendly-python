@@ -27,10 +27,12 @@ def main():
     print("1. Comprehensive error handling:\n")
 
     try:
-        client.messages.send(
-            to=SANDBOX_TEST_NUMBERS.INVALID,  # This will fail
+        message = client.messages.send(
+            to=SANDBOX_TEST_NUMBERS.INVALID,  # Accepted, but the message fails
             text="Test message",
         )
+        # Sandbox failure numbers do not raise: the send returns status 'failed'
+        print(f"   Status: {message.status.value}")
     except AuthenticationError as e:
         print("   Authentication Error:")
         print(f"   Code: {e.code}")
@@ -38,9 +40,15 @@ def main():
         print("   Action: Check your API key\n")
     except RateLimitError as e:
         print("   Rate Limit Error:")
+        print(f"   Code: {e.code}")
         print(f"   Message: {e.message}")
         print(f"   Retry after: {e.retry_after} seconds")
-        print("   Action: Wait and retry\n")
+        if e.code == "too_many_failed_key_attempts":
+            # Repeated wrong API keys locked this address out; the same key
+            # will keep failing, so do not retry it
+            print("   Action: Fix the API key, then wait out the lockout\n")
+        else:
+            print("   Action: Wait and retry\n")
     except InsufficientCreditsError as e:
         print("   Insufficient Credits Error:")
         print(f"   Credits needed: {e.credits_needed}")
@@ -78,6 +86,8 @@ def main():
             print("   Need more credits")
         elif e.code == "rate_limit_exceeded":
             print("   Slow down!")
+        elif e.code == "too_many_failed_key_attempts":
+            print("   Locked out after repeated wrong API keys - fix the key")
         else:
             print(f"   Error: {e.code}")
     print()
@@ -85,6 +95,9 @@ def main():
     # Example 3: Retry with backoff
     print("3. Retry with backoff (rate limit):\n")
 
+    # The client already waits out a rate limit of 60 seconds or less on its
+    # own, so a RateLimitError that reaches this loop either carries a longer
+    # wait or is one whose built-in retries ran out
     def send_with_retry(to: str, text: str, max_retries: int = 3):
         for attempt in range(1, max_retries + 1):
             try:
@@ -92,6 +105,8 @@ def main():
                 print(f"   Success on attempt {attempt}: {message.id}")
                 return message
             except RateLimitError as e:
+                if e.code == "too_many_failed_key_attempts":
+                    raise
                 if attempt < max_retries:
                     print(f"   Rate limited, waiting {e.retry_after}s...")
                     time.sleep(e.retry_after)

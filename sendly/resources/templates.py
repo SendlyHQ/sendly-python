@@ -9,6 +9,18 @@ from ..utils.http import AsyncHttpClient, HttpClient
 from urllib.parse import quote
 
 
+def _template_preview(data: Dict[str, Any]) -> TemplatePreview:
+    return TemplatePreview(
+        id=data["template_id"] if "template_id" in data else data["id"],
+        name=data.get("name"),
+        original_text=data["original_text"],
+        preview_text=data["rendered_text"] if "rendered_text" in data else data["preview_text"],
+        variables=data.get("variables") or [],
+        character_count=data.get("character_count"),
+        segment_count=data.get("segment_count"),
+    )
+
+
 class TemplatesResource:
     """Templates API resource for SMS template management (sync)"""
 
@@ -67,13 +79,7 @@ class TemplatesResource:
         """Preview a template with sample values"""
         body = {"variables": variables} if variables else {}
         data = self._http.request("POST", f"/templates/{quote(template_id, safe='')}/preview", body=body)
-        return TemplatePreview(
-            id=data["id"],
-            name=data["name"],
-            original_text=data["original_text"],
-            preview_text=data["preview_text"],
-            variables=data["variables"],
-        )
+        return _template_preview(data)
 
     def delete(self, template_id: str) -> None:
         """Delete a template"""
@@ -173,13 +179,7 @@ class AsyncTemplatesResource:
         """Preview a template with sample values"""
         body = {"variables": variables} if variables else {}
         data = await self._http.request("POST", f"/templates/{quote(template_id, safe='')}/preview", body=body)
-        return TemplatePreview(
-            id=data["id"],
-            name=data["name"],
-            original_text=data["original_text"],
-            preview_text=data["preview_text"],
-            variables=data["variables"],
-        )
+        return _template_preview(data)
 
     async def delete(self, template_id: str) -> None:
         """Delete a template"""

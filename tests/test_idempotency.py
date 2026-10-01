@@ -1,5 +1,5 @@
 """
-Tests for automatic idempotency keys - generation, retry reuse, rotation
+Tests for automatic idempotency keys - generation and retry reuse
 """
 
 import io
@@ -189,7 +189,7 @@ class TestAutomaticKeyGeneration:
 
 
 class TestRetryBehavior:
-    """Test key reuse and rotation across retries"""
+    """Test key reuse across retries"""
 
     def test_key_reused_after_timeout(self, api_key, mock_message, httpx_mock: HTTPXMock):
         """Test that the key is reused when retrying after a timeout"""
@@ -231,8 +231,8 @@ class TestRetryBehavior:
 
         client.close()
 
-    def test_key_rotated_after_5xx(self, api_key, mock_message, httpx_mock: HTTPXMock):
-        """Test that the auto key is rotated when retrying after a 5xx response"""
+    def test_key_kept_after_5xx(self, api_key, mock_message, httpx_mock: HTTPXMock):
+        """Test that the auto key is kept when retrying a 5xx, which the API never records"""
         client = Sendly(api_key, max_retries=2)
 
         httpx_mock.add_response(
@@ -255,15 +255,14 @@ class TestRetryBehavior:
         first = _key_of(requests[0])
         second = _key_of(requests[1])
         assert re.match(KEY_PATTERN, first)
-        assert re.match(KEY_PATTERN, second)
-        assert first != second
+        assert second == first
 
         client.close()
 
-    def test_rotated_key_kept_across_subsequent_timeout(
+    def test_key_kept_across_5xx_then_timeout(
         self, api_key, mock_message, httpx_mock: HTTPXMock
     ):
-        """Test that the rotated key is kept across a later timeout (5xx then timeout)"""
+        """Test that one key is kept across a 5xx and then a timeout"""
         client = Sendly(api_key, max_retries=3)
 
         httpx_mock.add_response(
@@ -287,8 +286,8 @@ class TestRetryBehavior:
         first = _key_of(requests[0])
         second = _key_of(requests[1])
         third = _key_of(requests[2])
-        assert second != first
-        assert third == second
+        assert second == first
+        assert third == first
 
         client.close()
 
@@ -299,8 +298,8 @@ class TestRetryBehavior:
         httpx_mock.add_response(
             url=f"{BASE}/messages",
             method="POST",
-            status_code=409,
-            json={"error": "conflict", "message": "Resource busy"},
+            status_code=408,
+            json={"error": "request_timeout", "message": "Request timeout"},
         )
         httpx_mock.add_response(
             url=f"{BASE}/messages",
@@ -629,8 +628,8 @@ class TestAsyncIdempotencyKeys:
         await client.close()
 
     @pytest.mark.asyncio
-    async def test_key_rotated_after_5xx(self, api_key, mock_message, httpx_mock: HTTPXMock):
-        """Test that the async client rotates the auto key after a 5xx response"""
+    async def test_key_kept_after_5xx(self, api_key, mock_message, httpx_mock: HTTPXMock):
+        """Test that the async client keeps the auto key after a 5xx response"""
         client = AsyncSendly(api_key, max_retries=2)
 
         httpx_mock.add_response(
@@ -653,8 +652,7 @@ class TestAsyncIdempotencyKeys:
         first = _key_of(requests[0])
         second = _key_of(requests[1])
         assert re.match(KEY_PATTERN, first)
-        assert re.match(KEY_PATTERN, second)
-        assert first != second
+        assert second == first
 
         await client.close()
 

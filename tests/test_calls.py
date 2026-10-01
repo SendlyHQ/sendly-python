@@ -1045,3 +1045,10 @@ class TestAsyncCalls:
         assert exc_info.value.status_code == 404
 
         await client.close()
+
+
+class TestCreateDocumentsErrorCodes:
+    def test_from_number_not_supported_is_listed(self):
+        from sendly.resources.calls import CallsResource
+
+        assert "from_number_not_supported" in (CallsResource.create.__doc__ or "")

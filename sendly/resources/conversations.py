@@ -9,6 +9,7 @@ from ..types import (
     ConversationContext,
     ConversationListResponse,
     ConversationWithMessages,
+    LabelListResponse,
     Message,
 )
 from ..utils.http import AsyncHttpClient, HttpClient
@@ -171,7 +172,12 @@ class ConversationsResource:
                 status_code=200,
             ) from e
 
-    def add_labels(self, conversation_id: str, label_ids: List[str]) -> Conversation:
+    def add_labels(self, conversation_id: str, label_ids: List[str]) -> LabelListResponse:
+        """Add labels to a conversation.
+
+        Returns:
+            Every label the conversation now carries
+        """
         body: Dict[str, Any] = {"labelIds": label_ids}
 
         data = self._http.request(
@@ -181,7 +187,7 @@ class ConversationsResource:
         )
 
         try:
-            return Conversation(**data)
+            return LabelListResponse(**data)
         except PydanticValidationError as e:
             raise SendlyError(
                 message=f"Invalid API response format: {e}",
@@ -189,20 +195,12 @@ class ConversationsResource:
                 status_code=200,
             ) from e
 
-    def remove_label(self, conversation_id: str, label_id: str) -> Conversation:
-        data = self._http.request(
+    def remove_label(self, conversation_id: str, label_id: str) -> None:
+        """Remove a label from a conversation."""
+        self._http.request(
             method="DELETE",
             path=f"/conversations/{quote(conversation_id, safe='')}/labels/{quote(label_id, safe='')}",
         )
-
-        try:
-            return Conversation(**data)
-        except PydanticValidationError as e:
-            raise SendlyError(
-                message=f"Invalid API response format: {e}",
-                code="invalid_response",
-                status_code=200,
-            ) from e
 
     def get_context(
         self,
@@ -386,7 +384,12 @@ class AsyncConversationsResource:
                 status_code=200,
             ) from e
 
-    async def add_labels(self, conversation_id: str, label_ids: List[str]) -> Conversation:
+    async def add_labels(self, conversation_id: str, label_ids: List[str]) -> LabelListResponse:
+        """Add labels to a conversation.
+
+        Returns:
+            Every label the conversation now carries
+        """
         body: Dict[str, Any] = {"labelIds": label_ids}
 
         data = await self._http.request(
@@ -396,7 +399,7 @@ class AsyncConversationsResource:
         )
 
         try:
-            return Conversation(**data)
+            return LabelListResponse(**data)
         except PydanticValidationError as e:
             raise SendlyError(
                 message=f"Invalid API response format: {e}",
@@ -404,20 +407,12 @@ class AsyncConversationsResource:
                 status_code=200,
             ) from e
 
-    async def remove_label(self, conversation_id: str, label_id: str) -> Conversation:
-        data = await self._http.request(
+    async def remove_label(self, conversation_id: str, label_id: str) -> None:
+        """Remove a label from a conversation."""
+        await self._http.request(
             method="DELETE",
             path=f"/conversations/{quote(conversation_id, safe='')}/labels/{quote(label_id, safe='')}",
         )
-
-        try:
-            return Conversation(**data)
-        except PydanticValidationError as e:
-            raise SendlyError(
-                message=f"Invalid API response format: {e}",
-                code="invalid_response",
-                status_code=200,
-            ) from e
 
     async def get_context(
         self,

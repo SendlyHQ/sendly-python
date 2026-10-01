@@ -10,15 +10,17 @@ disrupting outbound SMS during the 1-2 week review window.
 See: https://sendly.live/docs/business-upgrade
 """
 
+import asyncio
 import binascii
 import os
+import time
 from typing import Any, Dict, Literal, Optional, Tuple, Union
 from urllib.parse import quote
 
 import httpx
 
-from ..errors import SendlyError
-from ..utils.http import AsyncHttpClient, HttpClient
+from ..errors import RateLimitError, SendlyError
+from ..utils.http import AsyncHttpClient, HttpClient, _check_path_ids
 
 EntityType = Literal[
     "SOLE_PROPRIETOR",
@@ -266,6 +268,7 @@ def _build_multipart_request(
     files: Optional[Dict[str, Tuple[str, bytes, str]]],
 ) -> httpx.Request:
     """Build an httpx.Request carrying a pre-encoded multipart body."""
+    _check_path_ids(path)
     body, content_type = _encode_multipart(data, files)
     user_agent = client.headers.get("User-Agent", "")
     headers = _multipart_headers(
@@ -279,6 +282,10 @@ def _build_multipart_request(
     )
 
 
+def _key_check_busy(error: RateLimitError) -> bool:
+    return error.code == "too_many_concurrent_verifications" and error.retry_after <= 60
+
+
 def _multipart_request_sync(
     http: HttpClient,
     path: str,
@@ -290,12 +297,19 @@ def _multipart_request_sync(
     request = _build_multipart_request(
         client, path, http.api_key, http.organization_id, data, files
     )
-    # Single-use auto key (no retry loop on this path).
     request.headers["Idempotency-Key"] = http._generate_idempotency_key()
-    response = client.send(request)
-    http._update_rate_limit_info(response.headers)
-    parsed = http._parse_response(response)
-    return _validate_response(parsed)
+    for attempt in range(http.max_retries + 1):
+        response = client.send(request)
+        http._update_rate_limit_info(response.headers)
+        try:
+            parsed = http._parse_response(response)
+        except RateLimitError as e:
+            if _key_check_busy(e) and attempt < http.max_retries:
+                time.sleep(e.retry_after)
+                continue
+            raise
+        return _validate_response(parsed)
+    raise SendlyError("Request failed after retries")
 
 
 async def _multipart_request_async(
@@ -309,12 +323,19 @@ async def _multipart_request_async(
     request = _build_multipart_request(
         client, path, http.api_key, http.organization_id, data, files
     )
-    # Single-use auto key (no retry loop on this path).
     request.headers["Idempotency-Key"] = http._generate_idempotency_key()
-    response = await client.send(request)
-    http._update_rate_limit_info(response.headers)
-    parsed = http._parse_response(response)
-    return _validate_response(parsed)
+    for attempt in range(http.max_retries + 1):
+        response = await client.send(request)
+        http._update_rate_limit_info(response.headers)
+        try:
+            parsed = http._parse_response(response)
+        except RateLimitError as e:
+            if _key_check_busy(e) and attempt < http.max_retries:
+                await asyncio.sleep(e.retry_after)
+                continue
+            raise
+        return _validate_response(parsed)
+    raise SendlyError("Request failed after retries")
 
 
 class BusinessUpgradeResource:

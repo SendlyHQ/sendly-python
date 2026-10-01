@@ -1,6 +1,7 @@
 from typing import Any, Dict, List, Optional
 from urllib.parse import quote
 
+from ..errors import NotFoundError, RateLimitError, SendlyError
 from ..types import (
     AnalyticsOverview,
     AutoTopUpSettings,
@@ -32,6 +33,66 @@ from ..types import (
 from ..utils.http import AsyncHttpClient, HttpClient
 
 
+def _workspace_detail(response: Dict[str, Any]) -> EnterpriseWorkspaceDetail:
+    data = dict(response)
+    verification = data.get("verification")
+    if isinstance(verification, dict):
+        data.setdefault("verificationStatus", verification.get("status"))
+        data.setdefault("verificationType", verification.get("type"))
+        data.setdefault("tollFreeNumber", verification.get("tollFreeNumber"))
+        data.setdefault("businessName", verification.get("businessName"))
+    if "creditBalance" not in data and isinstance(data.get("credits"), (int, float)):
+        data["creditBalance"] = data["credits"]
+    return EnterpriseWorkspaceDetail(**data)
+
+
+def _submit_body(data: Optional[Dict[str, Any]], kwargs: Dict[str, Any]) -> Dict[str, Any]:
+    body: Dict[str, Any] = {}
+    if data:
+        body.update(data)
+    body.update(kwargs)
+    return {k: v for k, v in body.items() if v is not None}
+
+
+def _inherit_body(source_workspace_id: str, purchase_new_number: bool) -> Dict[str, Any]:
+    body: Dict[str, Any] = {"source_workspace_id": source_workspace_id}
+    if purchase_new_number:
+        body["purchaseNewNumber"] = True
+    return body
+
+
+def _set_webhook(response: Dict[str, Any]) -> EnterpriseWebhook:
+    if response.get("url") is None:
+        raise NotFoundError("No webhook is set", status_code=200)
+    return EnterpriseWebhook(**response)
+
+
+def _webhook_body(
+    url: str, events: Optional[List[str]], workspaces: Optional[List[str]]
+) -> Dict[str, Any]:
+    body: Dict[str, Any] = {"url": url}
+    if events is not None:
+        body["events"] = events
+    if workspaces is not None:
+        body["workspaces"] = workspaces
+    return body
+
+
+
+def _document_upload_error(response: Any) -> SendlyError:
+    resp_data = (
+        response.json()
+        if "application/json" in response.headers.get("content-type", "")
+        else {}
+    )
+    if isinstance(resp_data, dict):
+        return SendlyError.from_response(response.status_code, resp_data)
+    return SendlyError(
+        message=str(resp_data) or f"HTTP {response.status_code}",
+        code="internal_error",
+        status_code=response.status_code,
+    )
+
 class WorkspacesSubResource:
     def __init__(self, http: HttpClient):
         self._http = http
@@ -52,7 +113,7 @@ class WorkspacesSubResource:
         response = self._http.request(
             "GET", f"/enterprise/workspaces/{quote(workspace_id, safe='')}"
         )
-        return EnterpriseWorkspaceDetail(**response)
+        return _workspace_detail(response)
 
     def delete(self, workspace_id: str) -> None:
         self._http.request("DELETE", f"/enterprise/workspaces/{quote(workspace_id, safe='')}")
@@ -100,17 +161,10 @@ class WorkspacesSubResource:
         /opt-in/, /legal/) generated during provision are auto-preserved —
         you do not need to re-fetch them.
         """
-        body: Dict[str, Any] = {}
-        if data:
-            body.update(data)
-        body.update(kwargs)
-        # Strip None values so server-side merge picks up existing values
-        body = {k: v for k, v in body.items() if v is not None}
-
         response = self._http.request(
             "POST",
             f"/enterprise/workspaces/{quote(workspace_id, safe='')}/verification/submit",
-            body=body,
+            body=_submit_body(data, kwargs),
         )
         return response
 
@@ -130,11 +184,29 @@ class WorkspacesSubResource:
         """
         return self.submit_verification(workspace_id, **partial_updates)
 
-    def inherit_verification(self, workspace_id: str, source_workspace_id: str) -> Dict[str, Any]:
+    def inherit_verification(
+        self,
+        workspace_id: str,
+        source_workspace_id: str,
+        *,
+        purchase_new_number: bool = False,
+    ) -> Dict[str, Any]:
+        """
+        Give a workspace the verification of another workspace you own.
+
+        By default the workspace shares the source's verification and number.
+        With ``purchase_new_number=True`` it gets a copy of the business
+        details and orders its own toll-free number, which is submitted for
+        verification when the copied details are complete.
+
+        Returns:
+            Dict with 'verificationId', 'status', 'type', 'tollFreeNumber' and
+            'inheritedFrom', plus 'newNumber' when a new number was ordered
+        """
         response = self._http.request(
             "POST",
             f"/enterprise/workspaces/{quote(workspace_id, safe='')}/verification/inherit",
-            body={"source_workspace_id": source_workspace_id},
+            body=_inherit_body(source_workspace_id, purchase_new_number),
         )
         return response
 
@@ -385,13 +457,42 @@ class WebhooksSubResource:
     def __init__(self, http: HttpClient):
         self._http = http
 
-    def set(self, url: str) -> EnterpriseWebhook:
-        response = self._http.request("POST", "/enterprise/webhooks", body={"url": url})
+    def set(
+        self,
+        url: str,
+        events: Optional[List[str]] = None,
+        workspaces: Optional[List[str]] = None,
+    ) -> EnterpriseWebhook:
+        """
+        Set the webhook for events across your workspaces.
+
+        Args:
+            url: HTTPS endpoint URL
+            events: Event types to deliver (default: every event)
+            workspaces: Workspace IDs to deliver events for (default: every workspace)
+
+        Returns:
+            The webhook. The first call returns its ``signing_secret``, shown
+            only once
+        """
+        response = self._http.request(
+            "POST", "/enterprise/webhooks", body=_webhook_body(url, events, workspaces)
+        )
         return EnterpriseWebhook(**response)
 
     def get(self) -> EnterpriseWebhook:
+        """
+        Get the webhook set for events across your workspaces.
+
+        Returns:
+            The webhook's URL, events and workspaces. The signing secret is
+            returned only by the first :meth:`set`
+
+        Raises:
+            NotFoundError: If no webhook is set
+        """
         response = self._http.request("GET", "/enterprise/webhooks")
-        return EnterpriseWebhook(**response)
+        return _set_webhook(response)
 
     def delete(self) -> None:
         self._http.request("DELETE", "/enterprise/webhooks")
@@ -594,38 +695,42 @@ class EnterpriseResource:
         content_type = mimetypes.guess_type(file_path)[0] or "application/octet-stream"
 
         with open(file_path, "rb") as f:
-            files = {"file": (filename, f, content_type)}
-            data: Dict[str, str] = {}
-            if workspace_id is not None:
-                data["workspaceId"] = workspace_id
-            if verification_id is not None:
-                data["verificationId"] = verification_id
+            files = {"file": (filename, f.read(), content_type)}
 
-            headers = {
-                "Authorization": f"Bearer {self._http.api_key}",
-                "Accept": "application/json",
-            }
-            if self._http.organization_id:
-                headers["X-Organization-Id"] = self._http.organization_id
-            headers["Idempotency-Key"] = self._http._generate_idempotency_key()
+        data: Dict[str, str] = {}
+        if workspace_id is not None:
+            data["workspaceId"] = workspace_id
+        if verification_id is not None:
+            data["verificationId"] = verification_id
 
-            url = f"{self._http.base_url}/enterprise/verification-document/upload"
-            import httpx
-            with httpx.Client(timeout=self._http.timeout) as client:
+        headers = {
+            "Authorization": f"Bearer {self._http.api_key}",
+            "Accept": "application/json",
+        }
+        if self._http.organization_id:
+            headers["X-Organization-Id"] = self._http.organization_id
+        headers["Idempotency-Key"] = self._http._generate_idempotency_key()
+
+        url = f"{self._http.base_url}/enterprise/verification-document/upload"
+        import time
+
+        import httpx
+        with httpx.Client(timeout=self._http.timeout) as client:
+            for attempt in range(self._http.max_retries + 1):
                 response = client.post(url, files=files, data=data, headers=headers)
-
-            if not response.is_success:
-                from ..errors import SendlyError
-                resp_data = response.json() if "application/json" in response.headers.get("content-type", "") else {}
-                if isinstance(resp_data, dict):
-                    raise SendlyError.from_response(response.status_code, resp_data)
-                raise SendlyError(
-                    message=str(resp_data) or f"HTTP {response.status_code}",
-                    code="internal_error",
-                    status_code=response.status_code,
-                )
-
-            return response.json()
+                if response.is_success:
+                    return response.json()
+                error = _document_upload_error(response)
+                if (
+                    isinstance(error, RateLimitError)
+                    and error.code == "too_many_concurrent_verifications"
+                    and error.retry_after <= 60
+                    and attempt < self._http.max_retries
+                ):
+                    time.sleep(error.retry_after)
+                    continue
+                raise error
+        raise SendlyError("Request failed after retries")
 
 
 class AsyncWorkspacesSubResource:
@@ -648,40 +753,59 @@ class AsyncWorkspacesSubResource:
         response = await self._http.request(
             "GET", f"/enterprise/workspaces/{quote(workspace_id, safe='')}"
         )
-        return EnterpriseWorkspaceDetail(**response)
+        return _workspace_detail(response)
 
     async def delete(self, workspace_id: str) -> None:
         await self._http.request("DELETE", f"/enterprise/workspaces/{quote(workspace_id, safe='')}")
 
-    async def submit_verification(self, workspace_id: str, data: Dict[str, Any]) -> Dict[str, Any]:
-        body: Dict[str, Any] = {
-            "business_name": data.get("business_name"),
-            "business_type": data.get("business_type"),
-            "ein": data.get("ein"),
-            "address": data.get("address"),
-            "city": data.get("city"),
-            "state": data.get("state"),
-            "zip": data.get("zip"),
-            "use_case": data.get("use_case"),
-            "sample_messages": data.get("sample_messages"),
-        }
-        if data.get("monthly_volume") is not None:
-            body["monthly_volume"] = data["monthly_volume"]
+    async def submit_verification(
+        self,
+        workspace_id: str,
+        data: Optional[Dict[str, Any]] = None,
+        **kwargs: Any,
+    ) -> Dict[str, Any]:
+        """
+        Submit (or resubmit) a verification for an enterprise workspace (async).
 
+        Takes a ``data`` dict or keyword arguments with the API's camelCase
+        keys (``businessName``, ``website``, ``address``, ``contact``,
+        ``useCase``, ...) and drops None values; see
+        :meth:`WorkspacesSubResource.submit_verification`.
+        """
         response = await self._http.request(
             "POST",
             f"/enterprise/workspaces/{quote(workspace_id, safe='')}/verification/submit",
-            body=body,
+            body=_submit_body(data, kwargs),
         )
         return response
 
-    async def inherit_verification(
-        self, workspace_id: str, source_workspace_id: str
+    async def resubmit_verification(
+        self,
+        workspace_id: str,
+        **partial_updates: Any,
     ) -> Dict[str, Any]:
+        """
+        Convenience alias for resubmits (async): send only the fields that
+        changed; the rest carry over from the existing verification.
+        """
+        return await self.submit_verification(workspace_id, **partial_updates)
+
+    async def inherit_verification(
+        self,
+        workspace_id: str,
+        source_workspace_id: str,
+        *,
+        purchase_new_number: bool = False,
+    ) -> Dict[str, Any]:
+        """
+        Give a workspace the verification of another workspace you own
+        (async). Pass ``purchase_new_number=True`` for its own toll-free
+        number; see :meth:`WorkspacesSubResource.inherit_verification`.
+        """
         response = await self._http.request(
             "POST",
             f"/enterprise/workspaces/{quote(workspace_id, safe='')}/verification/inherit",
-            body={"source_workspace_id": source_workspace_id},
+            body=_inherit_body(source_workspace_id, purchase_new_number),
         )
         return response
 
@@ -936,13 +1060,30 @@ class AsyncWebhooksSubResource:
     def __init__(self, http: AsyncHttpClient):
         self._http = http
 
-    async def set(self, url: str) -> EnterpriseWebhook:
-        response = await self._http.request("POST", "/enterprise/webhooks", body={"url": url})
+    async def set(
+        self,
+        url: str,
+        events: Optional[List[str]] = None,
+        workspaces: Optional[List[str]] = None,
+    ) -> EnterpriseWebhook:
+        """Set the webhook for events across your workspaces (async).
+
+        See :meth:`WebhooksSubResource.set`; the first call returns the
+        ``signing_secret``, shown only once.
+        """
+        response = await self._http.request(
+            "POST", "/enterprise/webhooks", body=_webhook_body(url, events, workspaces)
+        )
         return EnterpriseWebhook(**response)
 
     async def get(self) -> EnterpriseWebhook:
+        """Get the webhook set for events across your workspaces (async).
+
+        Raises NotFoundError if no webhook is set; see
+        :meth:`WebhooksSubResource.get`.
+        """
         response = await self._http.request("GET", "/enterprise/webhooks")
-        return EnterpriseWebhook(**response)
+        return _set_webhook(response)
 
     async def delete(self) -> None:
         await self._http.request("DELETE", "/enterprise/webhooks")
@@ -1162,19 +1303,22 @@ class AsyncEnterpriseResource:
         headers["Idempotency-Key"] = self._http._generate_idempotency_key()
 
         url = f"{self._http.base_url}/enterprise/verification-document/upload"
+        import asyncio
+
         import httpx
         async with httpx.AsyncClient(timeout=self._http.timeout) as client:
-            response = await client.post(url, files=files, data=data, headers=headers)
-
-        if not response.is_success:
-            from ..errors import SendlyError
-            resp_data = response.json() if "application/json" in response.headers.get("content-type", "") else {}
-            if isinstance(resp_data, dict):
-                raise SendlyError.from_response(response.status_code, resp_data)
-            raise SendlyError(
-                message=str(resp_data) or f"HTTP {response.status_code}",
-                code="internal_error",
-                status_code=response.status_code,
-            )
-
-        return response.json()
+            for attempt in range(self._http.max_retries + 1):
+                response = await client.post(url, files=files, data=data, headers=headers)
+                if response.is_success:
+                    return response.json()
+                error = _document_upload_error(response)
+                if (
+                    isinstance(error, RateLimitError)
+                    and error.code == "too_many_concurrent_verifications"
+                    and error.retry_after <= 60
+                    and attempt < self._http.max_retries
+                ):
+                    await asyncio.sleep(error.retry_after)
+                    continue
+                raise error
+        raise SendlyError("Request failed after retries")

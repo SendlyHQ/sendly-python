@@ -8,11 +8,20 @@ from datetime import datetime
 from enum import Enum
 from typing import Any, Dict, List, Literal, Optional
 
-from pydantic import AliasChoices, BaseModel, ConfigDict, Field
+from pydantic import AliasChoices, BaseModel, ConfigDict, Field, model_validator
 
 # ============================================================================
 # Enums
 # ============================================================================
+
+
+def _keep_unknown(cls: Any, value: object) -> Any:
+    if not isinstance(value, str):
+        return None
+    member = str.__new__(cls, value)
+    member._name_ = "UNKNOWN"
+    member._value_ = value
+    return member
 
 
 class MessageStatus(str, Enum):
@@ -36,11 +45,22 @@ class MessageStatus(str, Enum):
 
 
 class SenderType(str, Enum):
-    """How the message was sent"""
+    """How the message was sent
+
+    ``EXPLICIT`` is a number of yours: the ``from`` you passed, your verified
+    toll-free number or the sender your workspace is authorized to use. A
+    sender type this version does not know is kept: its ``value`` is the
+    string the API sent and its ``name`` is ``UNKNOWN``.
+    """
 
     NUMBER_POOL = "number_pool"
     ALPHANUMERIC = "alphanumeric"
     SANDBOX = "sandbox"
+    EXPLICIT = "explicit"
+
+    @classmethod
+    def _missing_(cls, value: object) -> Any:
+        return _keep_unknown(cls, value)
 
 
 class MessageType(str, Enum):
@@ -141,11 +161,9 @@ class Message(BaseModel):
         default="outbound",
         description=(
             "Message direction, or 'outbound' when the response does not report one. "
-            "Only the conversation thread (GET /conversations/{id}?include_messages=true) "
-            "reports it. Sending, GET /messages and GET /messages/{id} all omit it, and "
-            "the list endpoint does return inbound messages, so an inbound message read "
-            "from it appears as 'outbound' here. Use reported_direction to tell a real "
-            "direction from an unreported one."
+            "Sending, GET /messages, GET /messages/{id} and the conversation thread "
+            "all report it. Use reported_direction to tell a real direction from an "
+            "unreported one."
         ),
     )
     reported_direction: Optional[Literal["outbound", "inbound"]] = Field(
@@ -162,11 +180,9 @@ class Message(BaseModel):
         default=1,
         description=(
             "Number of SMS segments, or 1 when the response does not report a count. "
-            "A simulated send (test key or sandbox destination) reports no segment "
-            "count, so this reads 1 for a message that was never segmented and summing "
-            "it across simulated sends over-counts. A live send, GET /messages, "
-            "GET /messages/{id} and the conversation thread all report it. Use "
-            "reported_segments to tell a real count from an unreported one."
+            "Every send, simulated or live, GET /messages, GET /messages/{id} and the "
+            "conversation thread report it. Use reported_segments to tell a real count "
+            "from an unreported one."
         ),
     )
     reported_segments: Optional[int] = Field(
@@ -175,8 +191,7 @@ class Message(BaseModel):
         exclude=True,
         description=(
             "Segment count as the response actually reported it, or None when it carried "
-            "no count. Sum this instead of segments to keep unsegmented simulated sends "
-            "out of the total."
+            "no count."
         ),
     )
     credits_used: int = Field(
@@ -184,11 +199,10 @@ class Message(BaseModel):
         alias="creditsUsed",
         description=(
             "Credits charged, or 0 when the response does not report a charge. "
-            "A simulated send (test key or sandbox destination) reports no charge, so "
-            "this reads 0 and cannot be told apart from a genuinely free message. "
-            "A live send, GET /messages, GET /messages/{id} and the conversation thread "
-            "all report it. Use reported_credits_used to tell a real 0 from an "
-            "unreported one."
+            "Every send reports it: a simulated send (test key or sandbox destination) "
+            "reports 0, because nothing was charged. GET /messages, GET /messages/{id} "
+            "and the conversation thread report it too. Use reported_credits_used to "
+            "tell a real 0 from an unreported one."
         ),
     )
     reported_credits_used: Optional[int] = Field(
@@ -197,8 +211,7 @@ class Message(BaseModel):
         exclude=True,
         description=(
             "Credits charged as the response actually reported it, or None when it "
-            "carried no charge. Sum this instead of credits_used to keep uncharged "
-            "simulated sends out of the total."
+            "carried no charge."
         ),
     )
     is_sandbox: bool = Field(
@@ -271,11 +284,35 @@ class Message(BaseModel):
     model_config = ConfigDict(populate_by_name=True)
 
 
+class MessageListPagination(BaseModel):
+    """Where a page of messages sits in the full list"""
+
+    total: int = Field(..., description="Number of messages that match the filters")
+    limit: int = Field(..., description="Page size")
+    offset: int = Field(..., description="Number of messages skipped")
+    page: Optional[int] = Field(default=None, description="Page number, counted from 1")
+    total_pages: Optional[int] = Field(
+        default=None, alias="totalPages", description="Number of pages"
+    )
+    has_more: bool = Field(..., alias="hasMore", description="Whether another page follows")
+
+    model_config = ConfigDict(populate_by_name=True)
+
+
 class MessageListResponse(BaseModel):
     """Response from listing messages"""
 
     data: List[Message] = Field(..., description="List of messages")
-    count: int = Field(..., description="Total count")
+    count: int = Field(
+        ...,
+        description=(
+            "Number of messages in this page. pagination.total is the number that "
+            "match the filters"
+        ),
+    )
+    pagination: Optional[MessageListPagination] = Field(
+        default=None, description="Total, page and whether another page follows"
+    )
 
 
 class ListMessagesOptions(BaseModel):
@@ -311,12 +348,24 @@ class MediaFile(BaseModel):
 
 
 class ScheduledMessageStatus(str, Enum):
-    """Scheduled message status"""
+    """Scheduled message status
+
+    Once a scheduled message goes out, its delivery receipts update the
+    status to ``DELIVERED`` or ``BOUNCED``. A status this version does not
+    know is kept: its ``value`` is the string the API sent and its ``name``
+    is ``UNKNOWN``.
+    """
 
     SCHEDULED = "scheduled"
     SENT = "sent"
     CANCELLED = "cancelled"
     FAILED = "failed"
+    DELIVERED = "delivered"
+    BOUNCED = "bounced"
+
+    @classmethod
+    def _missing_(cls, value: object) -> Any:
+        return _keep_unknown(cls, value)
 
 
 class ScheduleMessageRequest(BaseModel):
@@ -428,6 +477,9 @@ class CancelledMessageResponse(BaseModel):
 # ============================================================================
 
 
+MAX_BATCH_MESSAGES = 10_000
+
+
 class BatchStatus(str, Enum):
     """Batch status"""
 
@@ -453,9 +505,9 @@ class BatchMessageRequest(BaseModel):
 
     messages: List[BatchMessageItem] = Field(
         ...,
-        description="Array of messages to send (max 1000)",
+        description="Array of messages to send (max 10,000)",
         min_length=1,
-        max_length=1000,
+        max_length=MAX_BATCH_MESSAGES,
     )
     from_: Optional[str] = Field(
         default=None,
@@ -610,12 +662,28 @@ class SendGroupMessageRequest(BaseModel):
     model_config = ConfigDict(populate_by_name=True)
 
 
+class GroupRecipient(BaseModel):
+    """A recipient of a group MMS and its delivery status"""
+
+    phone_number: str = Field(..., alias="phoneNumber", description="Recipient in E.164 format")
+    status: Optional[str] = Field(default=None, description="Delivery status for this recipient")
+
+    model_config = ConfigDict(populate_by_name=True)
+
+
 class GroupMessageResponse(BaseModel):
     """Response from sending a group MMS"""
 
     id: str = Field(..., description="Unique message identifier")
     status: str = Field(..., description="Delivery status ('sent' or 'delivered')")
     to: List[str] = Field(..., description="Recipients the group message was sent to")
+    recipients: Optional[List[GroupRecipient]] = Field(
+        default=None,
+        description=(
+            "Each recipient with its delivery status. Reported by a live send; None "
+            "on a simulated send"
+        ),
+    )
     group_message_id: Optional[str] = Field(
         default=None,
         description="Stable group thread identifier (grp_xxx), when available",
@@ -625,6 +693,20 @@ class GroupMessageResponse(BaseModel):
     )
 
     model_config = ConfigDict(populate_by_name=True)
+
+    @model_validator(mode="before")
+    @classmethod
+    def _split_recipients(cls, data: Any) -> Any:
+        if not isinstance(data, dict) or not isinstance(data.get("to"), list):
+            return data
+        entries = [r for r in data["to"] if isinstance(r, dict)]
+        if not entries:
+            return data
+        to = [
+            r.get("phoneNumber", r.get("phone_number")) if isinstance(r, dict) else r
+            for r in data["to"]
+        ]
+        return {**data, "to": to, "recipients": data.get("recipients") or entries}
 
 
 # ============================================================================
@@ -665,6 +747,14 @@ class ApiErrorResponse(BaseModel):
     )
     retry_after: Optional[int] = Field(
         default=None, alias="retryAfter", description="Seconds to wait"
+    )
+    attempts_remaining: Optional[int] = Field(
+        default=None,
+        alias="attemptsRemaining",
+        description=(
+            "Attempts left after a wrong code "
+            "(whatsapp_verification_code_invalid)"
+        ),
     )
 
     model_config = ConfigDict(populate_by_name=True, extra="allow")
@@ -986,14 +1076,54 @@ class WebhookTestResult(BaseModel):
 
 
 class WebhookSecretRotation(BaseModel):
-    """Response from rotating webhook secret"""
+    """Response from rotating webhook secret
 
-    webhook: Webhook = Field(..., description="The webhook")
-    new_secret: str = Field(..., alias="newSecret", description="New signing secret")
-    old_secret_expires_at: str = Field(
-        ..., alias="oldSecretExpiresAt", description="When old secret expires"
+    Deliveries are signed with the new secret as soon as the rotation returns,
+    so have your endpoint accept both the old and the new secret until the new
+    one is deployed.
+    """
+
+    webhook: Optional[Webhook] = Field(
+        default=None, description="Not returned by the API; always None"
     )
-    message: str = Field(..., description="Message about grace period")
+    new_secret: str = Field(
+        ...,
+        alias="newSecret",
+        description="New signing secret - shown only once",
+    )
+    secret: Optional[str] = Field(
+        default=None, description="New signing secret (the same value as new_secret)"
+    )
+    old_secret_expires_at: Optional[str] = Field(
+        default=None,
+        alias="oldSecretExpiresAt",
+        description=(
+            "Not returned by the API; always None. The old secret stops signing "
+            "deliveries as soon as the rotation returns"
+        ),
+    )
+    message: str = Field(..., description="Message about the rotation")
+    success: bool = Field(default=True, description="Whether the secret was rotated")
+    id: Optional[str] = Field(default=None, description="Webhook ID")
+    new_secret_version: Optional[int] = Field(
+        default=None,
+        alias="newSecretVersion",
+        description=(
+            "The webhook's secret version as the API reports it. Rotating through "
+            "the API does not change it, so it does not count rotations"
+        ),
+    )
+    grace_period_hours: Optional[int] = Field(
+        default=None,
+        alias="gracePeriodHours",
+        description=(
+            "Grace period the API reports, in hours. Deliveries are signed with the "
+            "new secret as soon as the rotation returns"
+        ),
+    )
+    rotated_at: Optional[str] = Field(
+        default=None, alias="rotatedAt", description="When the secret was rotated (ISO 8601)"
+    )
 
     model_config = ConfigDict(populate_by_name=True)
 
@@ -1008,8 +1138,40 @@ class Account(BaseModel):
 
     id: str = Field(..., description="User ID")
     email: str = Field(..., description="Email address")
-    name: Optional[str] = Field(default=None, description="Display name")
+    name: Optional[str] = Field(
+        default=None, description="Display name. Not returned by the API; always None"
+    )
     created_at: str = Field(..., alias="createdAt", description="Account creation date")
+    organization: Optional[Dict[str, Any]] = Field(
+        default=None,
+        description=(
+            "The workspace the API key belongs to ({id, name, isPersonal}), or None "
+            "when it has none"
+        ),
+    )
+    credits: Optional[Dict[str, Any]] = Field(
+        default=None,
+        description="Credit balance of the key's workspace ({balance, reservedBalance})",
+    )
+    verification: Optional[Dict[str, Any]] = Field(
+        default=None,
+        description=(
+            "Business verification of the key's workspace ({status, type, region, "
+            "submittedAt, updatedAt}), or None when there is none"
+        ),
+    )
+    api_key: Optional[Dict[str, Any]] = Field(
+        default=None,
+        alias="apiKey",
+        description=(
+            "The API key that made the request ({id, name, type, scopes, createdAt, "
+            "lastUsedAt})"
+        ),
+    )
+    limits: Optional[Dict[str, Any]] = Field(
+        default=None,
+        description="Sending limits for the API key ({messagesPerMinute, messagesPerDay})",
+    )
 
     model_config = ConfigDict(populate_by_name=True)
 
@@ -1029,13 +1191,25 @@ class Credits(BaseModel):
 
 
 class TransactionType(str, Enum):
-    """Credit transaction type"""
+    """Credit transaction type
+
+    Auto-recharges are recorded as ``PURCHASE``, and ``ADJUSTMENT`` is never
+    recorded. A type this version does not know is kept: its ``value`` is the
+    string the API sent and its ``name`` is ``UNKNOWN``.
+    """
 
     PURCHASE = "purchase"
     USAGE = "usage"
     REFUND = "refund"
     ADJUSTMENT = "adjustment"
     BONUS = "bonus"
+    TRANSFER = "transfer"
+    ADMIN_GRANT = "admin_grant"
+    ADMIN_SEED = "admin_seed"
+
+    @classmethod
+    def _missing_(cls, value: object) -> Any:
+        return _keep_unknown(cls, value)
 
 
 class CreditTransaction(BaseModel):
@@ -1045,9 +1219,13 @@ class CreditTransaction(BaseModel):
     type: TransactionType = Field(..., description="Transaction type")
     amount: int = Field(..., description="Amount (positive for in, negative for out)")
     balance_after: int = Field(..., alias="balanceAfter", description="Balance after transaction")
-    description: str = Field(..., description="Transaction description")
+    description: Optional[str] = Field(
+        default=None, description="Transaction description, or None when it has none"
+    )
     message_id: Optional[str] = Field(
-        default=None, alias="messageId", description="Related message ID"
+        default=None,
+        alias="messageId",
+        description="Related message ID. Not returned by the API; always None",
     )
     created_at: str = Field(..., alias="createdAt", description="Transaction timestamp")
 
@@ -1069,7 +1247,11 @@ class ApiKey(BaseModel):
             "this field; use `prefix` to identify a key"
         ),
     )
-    permissions: List[str] = Field(default_factory=list, description="Permissions granted")
+    permissions: List[str] = Field(
+        default_factory=list,
+        validation_alias=AliasChoices("permissions", "scopes"),
+        description="Permissions granted (the key's scopes)",
+    )
     created_at: str = Field(..., alias="createdAt", description="Creation timestamp")
     last_used_at: Optional[str] = Field(
         default=None, alias="lastUsedAt", description="Last used timestamp"
@@ -1077,9 +1259,34 @@ class ApiKey(BaseModel):
     expires_at: Optional[str] = Field(
         default=None, alias="expiresAt", description="Expiration timestamp"
     )
-    is_revoked: bool = Field(default=False, alias="isRevoked", description="Whether revoked")
+    is_revoked: bool = Field(
+        default=False,
+        alias="isRevoked",
+        description="Whether revoked; read from is_active and revoked_at when not reported",
+    )
+    is_active: Optional[bool] = Field(
+        default=None, alias="isActive", description="Whether the key can be used"
+    )
+    revoked_at: Optional[str] = Field(
+        default=None, alias="revokedAt", description="When the key was revoked"
+    )
 
     model_config = ConfigDict(populate_by_name=True)
+
+    @model_validator(mode="before")
+    @classmethod
+    def _fill_revocation(cls, data: Any) -> Any:
+        if not isinstance(data, dict):
+            return data
+        data = {
+            k: v for k, v in data.items() if not (k in ("permissions", "scopes") and v is None)
+        }
+        if data.get("isRevoked", data.get("is_revoked")) is None:
+            active = data.get("isActive", data.get("is_active"))
+            revoked_at = data.get("revokedAt", data.get("revoked_at"))
+            if active is not None or revoked_at is not None:
+                data["isRevoked"] = active is False or bool(revoked_at)
+        return data
 
 
 # ============================================================================
@@ -1088,7 +1295,12 @@ class ApiKey(BaseModel):
 
 
 class VerificationStatus(str, Enum):
-    """Verification status"""
+    """Verification status
+
+    The API returns pending, verified, expired or failed. ``INVALID`` is never
+    returned: checking a wrong code raises ``ValidationError`` with code
+    ``invalid_code`` instead.
+    """
 
     PENDING = "pending"
     VERIFIED = "verified"
@@ -1238,10 +1450,20 @@ class TemplatePreview(BaseModel):
     """Template preview with interpolated text"""
 
     id: str = Field(..., description="Template ID")
-    name: str = Field(..., description="Template name")
+    name: Optional[str] = Field(
+        default=None, description="Template name. Not returned by the preview; always None"
+    )
     original_text: str = Field(..., description="Original text")
-    preview_text: str = Field(..., description="Preview text")
-    variables: List[Dict[str, Any]] = Field(default_factory=list, description="Variables")
+    preview_text: str = Field(..., description="Text with the variables filled in")
+    variables: List[Dict[str, Any]] = Field(
+        default_factory=list, description="Variables. Not returned by the preview; always empty"
+    )
+    character_count: Optional[int] = Field(
+        default=None, description="Characters in the preview text"
+    )
+    segment_count: Optional[int] = Field(
+        default=None, description="SMS segments the preview text takes"
+    )
 
 
 # ============================================================================
@@ -1250,7 +1472,12 @@ class TemplatePreview(BaseModel):
 
 
 class CampaignStatus(str, Enum):
-    """Campaign status"""
+    """Campaign status
+
+    A sent campaign becomes ``COMPLETED``; the API never returns ``SENT`` or
+    ``PAUSED``. ``campaigns.list(status='sent')`` still lists completed
+    campaigns.
+    """
 
     DRAFT = "draft"
     SCHEDULED = "scheduled"
@@ -1259,6 +1486,7 @@ class CampaignStatus(str, Enum):
     PAUSED = "paused"
     CANCELLED = "cancelled"
     FAILED = "failed"
+    COMPLETED = "completed"
 
 
 class Campaign(BaseModel):
@@ -1267,7 +1495,9 @@ class Campaign(BaseModel):
     id: str = Field(..., description="Unique campaign identifier")
     name: str = Field(..., description="Campaign name")
     text: str = Field(..., description="Message text with optional {{variables}}")
-    template_id: Optional[str] = Field(default=None, description="Template ID if using a template")
+    template_id: Optional[str] = Field(
+        default=None, description="Template ID. Not returned by the API; always None"
+    )
     contact_list_ids: List[str] = Field(default_factory=list, description="Contact list IDs")
     status: str = Field(..., description="Current status")
     recipient_count: int = Field(default=0, description="Total recipients")
@@ -1293,17 +1523,59 @@ class CampaignListResponse(BaseModel):
     offset: int = Field(..., description="Current offset")
 
 
+class CampaignSendResult(BaseModel):
+    """The batch a campaign was sent in"""
+
+    batch_id: str = Field(
+        ...,
+        alias="batchId",
+        description="Batch the messages went out in; see messages.get_batch()",
+    )
+    status: str = Field(
+        ...,
+        description="Status of that batch: processing, completed, partial_failure or failed",
+    )
+    total: int = Field(..., description="Messages in the batch")
+    sent: int = Field(default=0, description="Messages sent")
+    failed: int = Field(default=0, description="Messages that failed")
+    retrying: Optional[int] = Field(default=None, description="Messages being retried")
+    credits_used: int = Field(default=0, alias="creditsUsed", description="Credits used")
+    credits_refunded: int = Field(
+        default=0, alias="creditsRefunded", description="Credits returned for failed messages"
+    )
+    opted_out_skipped: int = Field(
+        default=0, alias="optedOutSkipped", description="Recipients skipped because they opted out"
+    )
+    invalid_skipped: int = Field(
+        default=0,
+        alias="invalidSkipped",
+        description="Recipients skipped because their number can't receive SMS",
+    )
+    messages: List[Dict[str, Any]] = Field(
+        default_factory=list,
+        description="Each message in the batch; empty while the batch is processing",
+    )
+
+    model_config = ConfigDict(populate_by_name=True)
+
+
 class CampaignPreview(BaseModel):
     """Campaign preview with recipient count and cost estimate"""
 
     id: str = Field(..., description="Campaign ID")
     recipient_count: int = Field(..., description="Total recipients")
-    estimated_segments: int = Field(..., description="Estimated segments")
+    estimated_segments: Optional[int] = Field(
+        default=None, description="Not returned by the API; always None"
+    )
     estimated_credits: int = Field(..., description="Estimated credits needed")
     current_balance: int = Field(..., description="Current credit balance")
     has_enough_credits: bool = Field(..., description="Whether user has enough credits")
     breakdown: Optional[List[Dict[str, Any]]] = Field(
-        default=None, description="Breakdown by country/tier"
+        default=None,
+        description=(
+            "Breakdown by country/tier. Not returned by the API; always None. "
+            "by_country has the per-country breakdown"
+        ),
     )
     blocked_count: Optional[int] = Field(
         default=None, description="Recipients blocked due to destination restrictions"
@@ -1317,6 +1589,15 @@ class CampaignPreview(BaseModel):
     warnings: Optional[List[str]] = Field(default=None, description="Validation warnings")
     messaging_profile: Optional[Dict[str, Any]] = Field(
         default=None, description="Messaging profile access info"
+    )
+    opted_out_count: Optional[int] = Field(
+        default=None, description="Recipients left out because they opted out"
+    )
+    invalid_count: Optional[int] = Field(
+        default=None, description="Recipients left out because their number is invalid"
+    )
+    sample_recipients: Optional[List[Dict[str, Any]]] = Field(
+        default=None, description="Up to five recipients ({phone, name})"
     )
 
 
@@ -1360,6 +1641,52 @@ class Contact(BaseModel):
     lists: Optional[List[Dict[str, str]]] = Field(
         default=None, description="Lists the contact belongs to"
     )
+
+
+class UpdatedContact(BaseModel):
+    """A contact as ``contacts.update()`` returns it
+
+    The update response does not report whether the contact has opted out,
+    the lists it belongs to or when it was created; read those with
+    ``contacts.get()``.
+    """
+
+    id: str = Field(..., description="Unique contact identifier")
+    phone_number: str = Field(..., description="Phone number in E.164 format")
+    name: Optional[str] = Field(default=None, description="Contact name")
+    email: Optional[str] = Field(default=None, description="Contact email")
+    metadata: Optional[Dict[str, Any]] = Field(default=None, description="Custom metadata")
+    line_type: Optional[str] = Field(
+        default=None,
+        description=(
+            "Carrier-reported line type (mobile, voip, toll free, fixed line, etc.). "
+            "Populated after a carrier lookup."
+        ),
+    )
+    carrier_name: Optional[str] = Field(
+        default=None, description="Carrier name from the lookup (e.g., AT&T)"
+    )
+    line_type_checked_at: Optional[str] = Field(
+        default=None, description="When the carrier lookup last ran"
+    )
+    invalid_reason: Optional[str] = Field(
+        default=None,
+        description=(
+            "Auto-exclusion reason: landline, invalid_number, or non_sms_capable. "
+            "Clear with contacts.mark_valid()."
+        ),
+    )
+    invalidated_at: Optional[str] = Field(
+        default=None, description="When the invalid flag was set"
+    )
+    user_marked_valid_at: Optional[str] = Field(
+        default=None,
+        description=(
+            "When a user manually cleared an auto-flag. Carrier re-checks respect this "
+            "timestamp and leave the contact clean."
+        ),
+    )
+    updated_at: Optional[str] = Field(default=None, description="Last update timestamp")
 
 
 class BulkMarkValidResponse(BaseModel):
@@ -1475,13 +1802,24 @@ class EnterpriseWorkspaceKey(BaseModel):
 
 
 class EnterpriseWorkspaceDetail(BaseModel):
+    """A workspace as ``enterprise.workspaces.get()`` returns it
+
+    That endpoint does not return the workspace's keys or its 30-day message
+    stats, so ``keys`` is empty and ``messages_30d``, ``delivered_30d``,
+    ``failed_30d`` and ``delivery_rate`` are 0; use
+    ``enterprise.workspaces.list_keys()`` for the keys.
+    """
+
     id: str
     name: str
     slug: str
     verification_status: Optional[str] = Field(default=None, alias="verificationStatus")
+    verification_type: Optional[str] = Field(default=None, alias="verificationType")
     toll_free_number: Optional[str] = Field(default=None, alias="tollFreeNumber")
     business_name: Optional[str] = Field(default=None, alias="businessName")
     credit_balance: int = Field(default=0, alias="creditBalance")
+    key_count: int = Field(default=0, alias="keyCount", description="Active API keys")
+    created_at: Optional[str] = Field(default=None, alias="createdAt")
     keys: List[EnterpriseWorkspaceKey] = Field(default_factory=list)
     messages_30d: int = Field(default=0, alias="messages30d")
     delivered_30d: int = Field(default=0, alias="delivered30d")
@@ -1525,7 +1863,23 @@ class WorkspaceCredits(BaseModel):
 
 
 class EnterpriseWebhook(BaseModel):
-    url: str
+    url: str = Field(..., description="Webhook URL")
+    events: Optional[List[str]] = Field(
+        default=None, description="Event types delivered, or None for every event"
+    )
+    workspaces: Optional[List[str]] = Field(
+        default=None, description="Workspace IDs delivered for, or None for every workspace"
+    )
+    signing_secret: Optional[str] = Field(
+        default=None,
+        alias="signingSecret",
+        description=(
+            "Signing secret, returned only by the first webhooks.set() - save it. "
+            "None afterwards and from webhooks.get()"
+        ),
+    )
+
+    model_config = ConfigDict(populate_by_name=True)
 
 
 class EnterpriseWebhookTestResult(BaseModel):
@@ -1579,8 +1933,28 @@ class CreditAnalyticsDataPoint(BaseModel):
 
 
 class CreditAnalytics(BaseModel):
+    """Credit totals across your workspaces
+
+    The endpoint returns totals, not a daily series, so ``data`` is always
+    empty.
+    """
+
     period: str
+    total_balance: int = Field(
+        default=0, alias="totalBalance", description="Credits left across the workspaces"
+    )
+    total_lifetime: int = Field(
+        default=0, alias="totalLifetime", description="Credits the workspaces ever received"
+    )
+    total_used: int = Field(
+        default=0, alias="totalUsed", description="Lifetime credits minus the balance"
+    )
+    workspace_count: int = Field(
+        default=0, alias="workspaceCount", description="Workspaces counted"
+    )
     data: List[CreditAnalyticsDataPoint] = Field(default_factory=list)
+
+    model_config = ConfigDict(populate_by_name=True)
 
 
 class OptInPage(BaseModel):
@@ -1919,6 +2293,7 @@ class Rule(BaseModel):
     name: str
     conditions: Dict[str, Any]
     actions: Dict[str, Any]
+    enabled: bool = Field(default=True, description="Whether the rule applies to new messages")
     priority: Optional[int] = None
     created_at: str = Field(..., alias="createdAt")
     updated_at: str = Field(..., alias="updatedAt")
@@ -1999,13 +2374,39 @@ class OwnedNumber(BaseModel):
     status: str = Field(..., description="Provisioning/lifecycle status")
     source: str = Field(..., description="How the number was acquired (e.g. purchased, ported)")
     country_code: str = Field(
-        ..., alias="countryCode", description="ISO 3166-1 alpha-2 country code"
+        default="",
+        alias="countryCode",
+        description=(
+            "ISO 3166-1 alpha-2 country code, or an empty string when the number has "
+            "none recorded"
+        ),
     )
     phone_number_type: str = Field(
-        ..., alias="phoneNumberType", description="Number type (e.g. mobile, local, toll_free)"
+        default="",
+        alias="phoneNumberType",
+        description=(
+            "Number type (e.g. mobile, local, toll_free), or an empty string when the "
+            "number has none recorded"
+        ),
     )
     monthly_cost_cents: int = Field(
-        ..., alias="monthlyCostCents", description="Monthly cost in cents, already customer-priced"
+        default=0,
+        alias="monthlyCostCents",
+        description=(
+            "Monthly cost in cents, already customer-priced, or 0 when the number has "
+            "no recorded price (for example the toll-free number provisioned with your "
+            "verification). Use reported_monthly_cost_cents to tell a recorded 0 from "
+            "a missing price"
+        ),
+    )
+    reported_monthly_cost_cents: Optional[int] = Field(
+        default=None,
+        validation_alias=AliasChoices("monthlyCostCents", "monthly_cost_cents"),
+        exclude=True,
+        description=(
+            "Monthly cost in cents as the API reported it, or None when the number has "
+            "no recorded price"
+        ),
     )
     is_default: Optional[bool] = Field(
         default=None,
@@ -2039,6 +2440,21 @@ class OwnedNumber(BaseModel):
     )
 
     model_config = ConfigDict(populate_by_name=True)
+
+    @model_validator(mode="before")
+    @classmethod
+    def _drop_unrecorded(cls, data: Any) -> Any:
+        if not isinstance(data, dict):
+            return data
+        unrecorded = (
+            "countryCode",
+            "country_code",
+            "phoneNumberType",
+            "phone_number_type",
+            "monthlyCostCents",
+            "monthly_cost_cents",
+        )
+        return {k: v for k, v in data.items() if v is not None or k not in unrecorded}
 
 
 class OwnedNumbersResponse(BaseModel):
@@ -2427,7 +2843,11 @@ class WhatsAppSignupSession(BaseModel):
     )
     status: str = Field(
         ...,
-        description="Signup status: initiated | registering | active | failed | expired",
+        description=(
+            "Signup status: initiated | registering | active | failed. "
+            "registering usually lasts a few minutes. expired is kept for "
+            "compatibility; the API does not send it"
+        ),
     )
 
     model_config = ConfigDict(populate_by_name=True)
@@ -2439,7 +2859,12 @@ class WhatsAppSignup(BaseModel):
     id: str = Field(..., description="Unique signup identifier")
     status: str = Field(
         ...,
-        description="Signup status: initiated | registering | active | failed | expired",
+        description=(
+            "Signup status: initiated | registering | verifying | active | "
+            "failed. registering usually lasts a few minutes. verifying means "
+            "a number added by code is waiting for its code. expired is kept "
+            "for compatibility; the API does not send it"
+        ),
     )
     phone_number: str = Field(
         ..., alias="phoneNumber", description="The number being connected, in E.164 format"
@@ -2448,14 +2873,50 @@ class WhatsAppSignup(BaseModel):
         default=None,
         alias="businessAccountId",
         description=(
-            "The customer's WhatsApp Business Account id, once linked; "
-            "None before the human completes the connect step"
+            "The customer's WhatsApp Business Account id, once linked (and "
+            "while a number added by code is verifying); None before the "
+            "human completes the connect step"
         ),
     )
     failure_reasons: Optional[List[str]] = Field(
         default=None,
         alias="failureReasons",
-        description="Why the signup failed, when status is failed",
+        description=(
+            "Why the signup failed, when status is failed. One code: "
+            "setup_fee_payment_failed, signup_abandoned, meta_exchange_failed, "
+            "registration_failed, waba_already_connected, waba_mismatch, "
+            "registration_timeout, phone_number_mismatch, or for a number "
+            "added by code verification_start_failed, verification_failed "
+            "or verification_expired"
+        ),
+    )
+    verification_method: Optional[str] = Field(
+        default=None,
+        alias="verificationMethod",
+        description="How the code is delivered, sms or voice. Only while verifying",
+    )
+    verification_attempts_remaining: Optional[int] = Field(
+        default=None,
+        alias="verificationAttemptsRemaining",
+        description=(
+            "Wrong codes that can still be submitted before the signup "
+            "fails. Only while verifying"
+        ),
+    )
+    verification_code: Optional[str] = Field(
+        default=None,
+        alias="verificationCode",
+        description=(
+            "The code WhatsApp texted to the number, read from its inbound "
+            "messages, or None when none has arrived. Only on signup.get() "
+            "while verifying. Until a code has been submitted it is the newest "
+            "code that has arrived since the signup started, so after a resend "
+            "it still shows the earlier code until the new one arrives. Once "
+            "WhatsApp has checked a code, only a code that arrived after the "
+            "last submission or resend is returned. A submission answered with "
+            "502 whatsapp_verification_unavailable is not counted, so the same "
+            "unchecked code can come back, and submitting it again is safe"
+        ),
     )
     updated_at: str = Field(
         ..., alias="updatedAt", description="When the status last changed (ISO 8601)"
@@ -2485,6 +2946,35 @@ class WhatsAppSender(BaseModel):
         default=None,
         alias="qualityRating",
         description='Meta quality rating (e.g. "GREEN"), or None before first rating',
+    )
+    business_account_id: Optional[str] = Field(
+        default=None,
+        alias="businessAccountId",
+        description=(
+            "The WhatsApp Business Account the number belongs to; pass it to "
+            "signup.create() to add another number to it. None while pending"
+        ),
+    )
+    business_name: Optional[str] = Field(
+        default=None,
+        alias="businessName",
+        description=(
+            "The account's business name; None while pending, or when the "
+            "account has no business name on file"
+        ),
+    )
+    calling_enabled: Optional[bool] = Field(
+        default=None,
+        alias="callingEnabled",
+        description="Whether WhatsApp calling is on for the number",
+    )
+    outbound_calling_allowed: Optional[bool] = Field(
+        default=None,
+        alias="outboundCallingAllowed",
+        description=(
+            "Whether WhatsApp lets the business place calls from the number; "
+            "False for +1, +20, +84 and +234 numbers"
+        ),
     )
     created_at: str = Field(
         ..., alias="createdAt", description="When the sender was connected (ISO 8601)"
@@ -2541,6 +3031,62 @@ class WhatsAppSenderProfile(BaseModel):
     model_config = ConfigDict(populate_by_name=True)
 
 
+class WhatsAppCommand(BaseModel):
+    """A command shown when a customer types "/" in a chat with the business"""
+
+    command: str = Field(
+        ...,
+        description=(
+            "Letters, digits or underscores, 1 to 32 characters; a leading "
+            '"/" is stripped'
+        ),
+    )
+    description: str = Field(..., description="What the command does, 1 to 256 characters")
+
+
+class WhatsAppConversationalComponents(BaseModel):
+    """A sender's ice breakers and commands"""
+
+    phone_number: str = Field(
+        ..., alias="phoneNumber", description="The sender, in E.164 format"
+    )
+    ice_breakers: List[str] = Field(
+        default_factory=list,
+        alias="iceBreakers",
+        description=(
+            "Up to 4 tappable suggestions shown when someone opens a chat "
+            "with the business for the first time"
+        ),
+    )
+    commands: List[WhatsAppCommand] = Field(
+        default_factory=list,
+        description='Up to 30 commands shown when the customer types "/"',
+    )
+
+    model_config = ConfigDict(populate_by_name=True)
+
+
+class WhatsAppCallingSettings(BaseModel):
+    """Whether WhatsApp calling is on for a sender"""
+
+    phone_number: str = Field(
+        ..., alias="phoneNumber", description="The sender, in E.164 format"
+    )
+    calling_enabled: bool = Field(
+        ..., alias="callingEnabled", description="Whether WhatsApp calling is now on"
+    )
+    outbound_calling_allowed: bool = Field(
+        ...,
+        alias="outboundCallingAllowed",
+        description=(
+            "Whether WhatsApp lets the business place calls from the number; "
+            "False for +1, +20, +84 and +234 numbers"
+        ),
+    )
+
+    model_config = ConfigDict(populate_by_name=True)
+
+
 class WhatsAppTemplate(BaseModel):
     """A WhatsApp message template"""
 
@@ -2556,7 +3102,10 @@ class WhatsAppTemplate(BaseModel):
     )
     status: str = Field(
         ...,
-        description="Review status: PENDING | APPROVED | REJECTED | PAUSED | DISABLED",
+        description=(
+            "Review status, e.g. PENDING | APPROVED | REJECTED | PAUSED | "
+            "DISABLED; Meta may report others"
+        ),
     )
     quality_rating: Optional[str] = Field(
         default=None,
@@ -2608,7 +3157,11 @@ class WhatsAppWindow(BaseModel):
     expires_at: Optional[str] = Field(
         default=None,
         alias="expiresAt",
-        description="When the window closes (ISO 8601), or None when no window is open",
+        description=(
+            "When the window closes (ISO 8601). After it closes this is the "
+            "past expiry, with open False; None when Sendly has no window on "
+            "record for the pair"
+        ),
     )
 
     model_config = ConfigDict(populate_by_name=True)
@@ -2659,7 +3212,11 @@ class WhatsAppMessage(BaseModel):
     from_: str = Field(..., alias="from", description="Sending number")
     text: Optional[str] = Field(
         default=None,
-        description="Body text for free-form text sends; None for template and media sends",
+        description=(
+            "Body text for free-form text sends, or the caption for media "
+            "sends (pass it as text with media_urls); None for template sends "
+            "and media sent without a caption"
+        ),
     )
     status: MessageStatus = Field(..., description="Current delivery status")
     segments: int = Field(
@@ -2668,7 +3225,16 @@ class WhatsAppMessage(BaseModel):
     credits_used: int = Field(
         default=0,
         alias="creditsUsed",
-        description="Credits charged (priced by destination country and category)",
+        description=(
+            "Credits charged. Free-form text or media inside the 24-hour "
+            "window: 1 credit each for the first 1,000 per sending number per "
+            "calendar month (UTC), then the destination's utility template "
+            "price; countries without a listed price use the default utility "
+            "price of 12 credits. Templates are priced by category and "
+            "destination country; countries without a listed price use 33 "
+            "(marketing), 12 (utility) and 12 (authentication) credits. A "
+            "failed send gives its slot back"
+        ),
     )
     whatsapp: WhatsAppMessageDetails = Field(..., description="WhatsApp-specific details")
     created_at: str = Field(
@@ -2710,6 +3276,13 @@ class RcsAgent(BaseModel):
             "and fully provisioned)"
         ),
     )
+    stage: Optional[str] = Field(
+        default=None,
+        description=(
+            "Where the registration is, from draft to live; compare with "
+            "RcsCustomerStage. None when the response does not report one"
+        ),
+    )
     created_at: str = Field(
         ..., alias="createdAt", description="When the agent was registered (ISO 8601)"
     )
@@ -2746,9 +3319,9 @@ class RcsMessageDetails(BaseModel):
 
     The fields that are populated depend on which leg delivered. A native
     RCS send carries ``kind`` and ``agent_name``; a send that fell back to
-    SMS carries ``requested_channel`` (always ``'rcs'``) and, when the
-    request had suggestion chips, ``suggestions_dropped``. ``agent_id`` is
-    present either way.
+    SMS carries ``requested_channel`` (always ``'rcs'``), ``fallback_reason``
+    and, when the request had suggestion chips, ``suggestions_dropped``.
+    ``agent_id`` is present either way.
     """
 
     agent_id: str = Field(
@@ -2777,6 +3350,15 @@ class RcsMessageDetails(BaseModel):
         description=(
             "True when the request carried suggestion chips and fell back to "
             "SMS - chips have no SMS form and were dropped"
+        ),
+    )
+    fallback_reason: Optional[str] = Field(
+        default=None,
+        alias="fallbackReason",
+        description=(
+            "Why the send fell back to SMS: not_rcs_capable, or "
+            "capability_check_failed when the recipient could not be checked. "
+            "None on a native RCS send"
         ),
     )
 
@@ -3399,6 +3981,16 @@ class CallKind(str, Enum):
     INTERNAL = "internal"
 
 
+class CallChannel(str, Enum):
+    """How the far end reached the call: the phone network, WhatsApp, or a
+    browser. ``Call.channel`` is a plain string, so a value added later is
+    kept as it is."""
+
+    PHONE = "phone"
+    WHATSAPP = "whatsapp"
+    BROWSER = "browser"
+
+
 class CallHandledBy(str, Enum):
     """Who answered: an AI agent or the team in the dashboard"""
 
@@ -3441,6 +4033,14 @@ class Call(BaseModel):
     id: str = Field(..., description="Unique call identifier")
     object: str = Field(default="call", description="Always 'call'")
     kind: str = Field(..., description="pstn | internal (see CallKind)")
+    channel: Optional[str] = Field(
+        default=None,
+        description=(
+            "phone | whatsapp | browser (see CallChannel); other values may "
+            "be added. An inbound WhatsApp call can read phone until the "
+            "carrier labels it"
+        ),
+    )
     direction: str = Field(..., description="inbound | outbound (see CallDirection)")
     status: str = Field(..., description="Call status (see CallStatus)")
     handled_by: str = Field(

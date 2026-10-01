@@ -4,24 +4,29 @@ Messages Resource
 API resource for sending and managing SMS messages.
 """
 
+from enum import Enum
 from typing import Any, Dict, List, Optional, Union
 from urllib.parse import quote
 
 from pydantic import ValidationError as PydanticValidationError
 
-from ..errors import SendlyError
+from ..errors import SendlyError, ValidationError
 from ..types import (
+    MAX_BATCH_MESSAGES,
     BatchListResponse,
     BatchMessageResponse,
+    BatchStatus,
     CancelledMessageResponse,
     EnhanceMessageResponse,
     GroupMessageResponse,
     ListMessagesOptions,
     Message,
     MessageListResponse,
+    MessageStatus,
     RcsMessage,
     ScheduledMessage,
     ScheduledMessageListResponse,
+    ScheduledMessageStatus,
     SendMessageRequest,
     WhatsAppMessage,
 )
@@ -70,8 +75,11 @@ class MessagesResource:
         Send an SMS, WhatsApp, or RCS message
 
         Pass ``channel='whatsapp'`` to send on WhatsApp. WhatsApp sends
-        require a live API key and a ``from_`` number with an active WhatsApp
-        connection (see ``client.whatsapp.signup``). Free-form ``text`` and
+        require the ``sms:send`` scope (not ``whatsapp:write``), a live API
+        key and a ``from_`` number with an active WhatsApp connection (see
+        ``client.whatsapp.signup``). WhatsApp is enabled per person (the user
+        who owns the API key, not the workspace); while it is off the API
+        responds 403 ``whatsapp_not_enabled``. Free-form ``text`` and
         media only deliver inside an open 24-hour customer-service window -
         outside it, send an approved ``template`` instead (check with
         ``client.whatsapp.window()``).
@@ -137,6 +145,22 @@ class MessagesResource:
             InsufficientCreditsError: If credit balance is too low
             AuthenticationError: If the API key is invalid
             RateLimitError: If rate limit is exceeded
+            SendlyError: ``whatsapp_send_failed`` on WhatsApp: 422 when
+                WhatsApp refused the message, which is final and not retried
+                (cached under the idempotency key and replayed for 24 hours);
+                502 when the message provably never reached the carrier, so it
+                was not sent and is safe to send again. A 502 is never cached,
+                so the SDK retries it like any 5xx under the same idempotency
+                key. Either way the message wasn't charged. No send returns
+                503 ``whatsapp_unavailable``.
+            SendlyError: ``whatsapp_send_unconfirmed`` (409) on WhatsApp when
+                the outcome is unknown: the message was marked failed and
+                refunded, but it may still be delivered, so check before
+                sending it again (it could arrive twice). It is cached under
+                the idempotency key and not retried automatically.
+            SendlyError: ``whatsapp_not_enabled`` (403) when WhatsApp isn't
+                enabled for the key's owner, or ``whatsapp_requires_live_key``
+                (403) with a test key.
 
         Example:
             >>> message = client.messages.send(
@@ -199,8 +223,8 @@ class MessagesResource:
             validate_phone_number(from_ or "")
             has_media = bool(media_urls)
             if not text and not has_media and not template:
-                raise SendlyError(
-                    message="Provide 'text', 'media_urls', or 'template'",
+                raise ValidationError(
+                    "Provide 'text', 'media_urls', or 'template'",
                     code="invalid_request",
                     status_code=400,
                 )
@@ -273,33 +297,48 @@ class MessagesResource:
     def list(
         self,
         limit: Optional[int] = None,
+        offset: Optional[int] = None,
+        status: Optional[Union[MessageStatus, str]] = None,
+        direction: Optional[str] = None,
+        to: Optional[str] = None,
+        page: Optional[int] = None,
+        q: Optional[str] = None,
+        sandbox: Optional[bool] = None,
         **kwargs: Any,
     ) -> MessageListResponse:
         """
-        List sent messages
+        List messages, newest first
+
+        Inbound messages are included unless you filter by ``direction``.
 
         Args:
             limit: Maximum number of messages to return (1-100, default 50)
+            offset: Number of messages to skip
+            status: Only messages in this status: a MessageStatus or its value
+                (e.g. ``'failed'``)
+            direction: ``'inbound'`` or ``'outbound'``
+            to: Only messages to this number (with or without the leading +)
+            page: Page number, counted from 1; takes precedence over offset
+            q: Only messages whose text matches this search
+            sandbox: With a live key, True lists sandbox messages instead of
+                live ones. A test key only ever sees sandbox messages
 
         Returns:
-            Paginated list of messages
+            Paginated list of messages; ``pagination.total`` counts every match
 
         Raises:
             AuthenticationError: If the API key is invalid
             RateLimitError: If rate limit is exceeded
 
         Example:
-            >>> result = client.messages.list(limit=10)
+            >>> result = client.messages.list(limit=10, status='failed')
             >>> for msg in result.data:
             ...     print(f'{msg.to}: {msg.status}')
         """
         # Validate inputs
         validate_limit(limit)
 
-        # Build query params
-        params: Dict[str, Any] = {}
-        if limit is not None:
-            params["limit"] = limit
+        params = _list_params(limit, offset, status, direction, to, page, q, sandbox)
 
         # Make API request
         data = self._http.request(
@@ -358,6 +397,12 @@ class MessagesResource:
     def list_all(
         self,
         batch_size: int = 100,
+        offset: Optional[int] = None,
+        status: Optional[Union[MessageStatus, str]] = None,
+        direction: Optional[str] = None,
+        to: Optional[str] = None,
+        q: Optional[str] = None,
+        sandbox: Optional[bool] = None,
         **kwargs: Any,
     ):
         """
@@ -365,6 +410,13 @@ class MessagesResource:
 
         Args:
             batch_size: Number of messages to fetch per request (max 100)
+            offset: Number of messages to skip before the first one
+            status: Only messages in this status: a MessageStatus or its value
+                (e.g. ``'failed'``)
+            direction: ``'inbound'`` or ``'outbound'``
+            to: Only messages to this number (with or without the leading +)
+            q: Only messages whose text matches this search
+            sandbox: With a live key, True lists sandbox messages instead
 
         Yields:
             Message objects one at a time
@@ -374,17 +426,17 @@ class MessagesResource:
             RateLimitError: If rate limit is exceeded
 
         Example:
-            >>> for message in client.messages.list_all():
+            >>> for message in client.messages.list_all(status='failed'):
             ...     print(f'{message.id}: {message.status}')
         """
         batch_size = min(batch_size, 100)
-        offset = 0
+        offset = offset or 0
 
         while True:
             data = self._http.request(
                 method="GET",
                 path="/messages",
-                params={"limit": batch_size, "offset": offset},
+                params=_list_params(batch_size, offset, status, direction, to, None, q, sandbox),
             )
 
             try:
@@ -399,10 +451,10 @@ class MessagesResource:
             for message in response.data:
                 yield message
 
-            if len(response.data) < batch_size:
+            if not _has_more(response, batch_size):
                 break
 
-            offset += batch_size
+            offset += len(response.data)
 
     # =========================================================================
     # Scheduled Messages
@@ -483,7 +535,7 @@ class MessagesResource:
         self,
         limit: Optional[int] = None,
         offset: Optional[int] = None,
-        status: Optional[str] = None,
+        status: Optional[Union[ScheduledMessageStatus, str]] = None,
         **kwargs: Any,
     ) -> ScheduledMessageListResponse:
         """
@@ -492,7 +544,7 @@ class MessagesResource:
         Args:
             limit: Maximum number of messages to return (1-100)
             offset: Number of messages to skip
-            status: Filter by status
+            status: Filter by status: a ScheduledMessageStatus or its value
 
         Returns:
             Paginated list of scheduled messages
@@ -505,7 +557,7 @@ class MessagesResource:
         if offset is not None:
             params["offset"] = offset
         if status is not None:
-            params["status"] = status
+            params["status"] = _status_value(status)
 
         data = self._http.request(
             method="GET",
@@ -591,7 +643,8 @@ class MessagesResource:
         Send multiple SMS messages in a single batch
 
         Args:
-            messages: List of dicts with 'to' and 'text' keys (max 1000). Each dict can also include 'metadata' for per-message metadata.
+            messages: List of dicts with 'to' and 'text' keys (max 10,000). Each dict
+                can also include 'metadata' for per-message metadata.
             from_: Optional sender ID (for international destinations only)
             message_type: Message type for compliance - 'marketing' (default, subject to quiet hours) or 'transactional' (24/7)
             metadata: Shared metadata for all messages in the batch (max 4KB). Per-message metadata takes priority when merging.
@@ -620,9 +673,9 @@ class MessagesResource:
                 status_code=400,
             )
 
-        if len(messages) > 1000:
+        if len(messages) > MAX_BATCH_MESSAGES:
             raise SendlyError(
-                message="Maximum 1000 messages per batch",
+                message="Maximum 10,000 messages per batch",
                 code="invalid_request",
                 status_code=400,
             )
@@ -697,7 +750,7 @@ class MessagesResource:
         self,
         limit: Optional[int] = None,
         offset: Optional[int] = None,
-        status: Optional[str] = None,
+        status: Optional[Union[BatchStatus, str]] = None,
         **kwargs: Any,
     ) -> BatchListResponse:
         """
@@ -706,7 +759,7 @@ class MessagesResource:
         Args:
             limit: Maximum number of batches to return (1-100)
             offset: Number of batches to skip
-            status: Filter by status
+            status: Filter by status: a BatchStatus or its value
 
         Returns:
             Paginated list of batches
@@ -719,7 +772,7 @@ class MessagesResource:
         if offset is not None:
             params["offset"] = offset
         if status is not None:
-            params["status"] = status
+            params["status"] = _status_value(status)
 
         data = self._http.request(
             method="GET",
@@ -747,12 +800,15 @@ class MessagesResource:
         Preview a batch without sending (dry run)
 
         Args:
-            messages: List of dicts with 'to' and 'text' keys (max 1000)
+            messages: List of dicts with 'to' and 'text' keys (max 10,000)
             from_: Optional sender ID (for international destinations only)
             message_type: Message type: 'marketing' (default) or 'transactional'
 
         Returns:
-            Preview showing what would happen if batch was sent
+            The API's preview as a dict, including 'total', 'sendable', 'blocked',
+            'duplicates', 'creditsNeeded', 'creditBalance',
+            'hasSufficientCredits', 'byCountry', 'blockedMessages',
+            'compliance', 'messagingProfile' and 'warnings'
 
         Example:
             >>> preview = client.messages.preview_batch(
@@ -761,8 +817,8 @@ class MessagesResource:
             ...         {'to': '+15559876543', 'text': 'Hello User 2!'}
             ...     ]
             ... )
-            >>> print(preview['canSend'])
-            >>> print(preview['creditsNeeded'])
+            >>> print(preview['sendable'], preview['blocked'])
+            >>> print(preview['creditsNeeded'], preview['hasSufficientCredits'])
         """
         if not messages or not isinstance(messages, list):
             raise SendlyError(
@@ -771,9 +827,9 @@ class MessagesResource:
                 status_code=400,
             )
 
-        if len(messages) > 1000:
+        if len(messages) > MAX_BATCH_MESSAGES:
             raise SendlyError(
-                message="Maximum 1000 messages per batch",
+                message="Maximum 10,000 messages per batch",
                 code="invalid_request",
                 status_code=400,
             )
@@ -1041,8 +1097,8 @@ class AsyncMessagesResource:
             validate_phone_number(from_ or "")
             has_media = bool(media_urls)
             if not text and not has_media and not template:
-                raise SendlyError(
-                    message="Provide 'text', 'media_urls', or 'template'",
+                raise ValidationError(
+                    "Provide 'text', 'media_urls', or 'template'",
                     code="invalid_request",
                     status_code=400,
                 )
@@ -1115,16 +1171,32 @@ class AsyncMessagesResource:
     async def list(
         self,
         limit: Optional[int] = None,
+        offset: Optional[int] = None,
+        status: Optional[Union[MessageStatus, str]] = None,
+        direction: Optional[str] = None,
+        to: Optional[str] = None,
+        page: Optional[int] = None,
+        q: Optional[str] = None,
+        sandbox: Optional[bool] = None,
         **kwargs: Any,
     ) -> MessageListResponse:
         """
-        List sent messages (async)
+        List messages, newest first (async)
+
+        See :meth:`MessagesResource.list` for the filters.
 
         Args:
             limit: Maximum number of messages to return (1-100)
+            offset: Number of messages to skip
+            status: Only messages in this status: a MessageStatus or its value
+            direction: ``'inbound'`` or ``'outbound'``
+            to: Only messages to this number
+            page: Page number, counted from 1
+            q: Only messages whose text matches this search
+            sandbox: With a live key, True lists sandbox messages instead
 
         Returns:
-            Paginated list of messages
+            Paginated list of messages; ``pagination.total`` counts every match
 
         Example:
             >>> result = await client.messages.list(limit=10)
@@ -1134,10 +1206,7 @@ class AsyncMessagesResource:
         # Validate inputs
         validate_limit(limit)
 
-        # Build query params
-        params: Dict[str, Any] = {}
-        if limit is not None:
-            params["limit"] = limit
+        params = _list_params(limit, offset, status, direction, to, page, q, sandbox)
 
         # Make API request
         data = await self._http.request(
@@ -1190,13 +1259,27 @@ class AsyncMessagesResource:
     async def list_all(
         self,
         batch_size: int = 100,
+        offset: Optional[int] = None,
+        status: Optional[Union[MessageStatus, str]] = None,
+        direction: Optional[str] = None,
+        to: Optional[str] = None,
+        q: Optional[str] = None,
+        sandbox: Optional[bool] = None,
         **kwargs: Any,
     ):
         """
         Iterate through all messages with automatic pagination (async)
 
+        See :meth:`MessagesResource.list_all` for the filters.
+
         Args:
             batch_size: Number of messages to fetch per request (max 100)
+            offset: Number of messages to skip before the first one
+            status: Only messages in this status: a MessageStatus or its value
+            direction: ``'inbound'`` or ``'outbound'``
+            to: Only messages to this number
+            q: Only messages whose text matches this search
+            sandbox: With a live key, True lists sandbox messages instead
 
         Yields:
             Message objects one at a time
@@ -1210,13 +1293,13 @@ class AsyncMessagesResource:
             ...     print(f'{message.id}: {message.status}')
         """
         batch_size = min(batch_size, 100)
-        offset = 0
+        offset = offset or 0
 
         while True:
             data = await self._http.request(
                 method="GET",
                 path="/messages",
-                params={"limit": batch_size, "offset": offset},
+                params=_list_params(batch_size, offset, status, direction, to, None, q, sandbox),
             )
 
             try:
@@ -1231,10 +1314,10 @@ class AsyncMessagesResource:
             for message in response.data:
                 yield message
 
-            if len(response.data) < batch_size:
+            if not _has_more(response, batch_size):
                 break
 
-            offset += batch_size
+            offset += len(response.data)
 
     # =========================================================================
     # Scheduled Messages
@@ -1306,7 +1389,7 @@ class AsyncMessagesResource:
         self,
         limit: Optional[int] = None,
         offset: Optional[int] = None,
-        status: Optional[str] = None,
+        status: Optional[Union[ScheduledMessageStatus, str]] = None,
         **kwargs: Any,
     ) -> ScheduledMessageListResponse:
         """List scheduled messages (async)"""
@@ -1318,7 +1401,7 @@ class AsyncMessagesResource:
         if offset is not None:
             params["offset"] = offset
         if status is not None:
-            params["status"] = status
+            params["status"] = _status_value(status)
 
         data = await self._http.request(
             method="GET",
@@ -1392,9 +1475,9 @@ class AsyncMessagesResource:
                 status_code=400,
             )
 
-        if len(messages) > 1000:
+        if len(messages) > MAX_BATCH_MESSAGES:
             raise SendlyError(
-                message="Maximum 1000 messages per batch",
+                message="Maximum 10,000 messages per batch",
                 code="invalid_request",
                 status_code=400,
             )
@@ -1461,7 +1544,7 @@ class AsyncMessagesResource:
         self,
         limit: Optional[int] = None,
         offset: Optional[int] = None,
-        status: Optional[str] = None,
+        status: Optional[Union[BatchStatus, str]] = None,
         **kwargs: Any,
     ) -> BatchListResponse:
         """List message batches (async)"""
@@ -1473,7 +1556,7 @@ class AsyncMessagesResource:
         if offset is not None:
             params["offset"] = offset
         if status is not None:
-            params["status"] = status
+            params["status"] = _status_value(status)
 
         data = await self._http.request(
             method="GET",
@@ -1505,9 +1588,9 @@ class AsyncMessagesResource:
                 status_code=400,
             )
 
-        if len(messages) > 1000:
+        if len(messages) > MAX_BATCH_MESSAGES:
             raise SendlyError(
-                message="Maximum 1000 messages per batch",
+                message="Maximum 10,000 messages per batch",
                 code="invalid_request",
                 status_code=400,
             )
@@ -1667,6 +1750,45 @@ class AsyncMessagesResource:
             ) from e
 
 
+def _status_value(status: Union[Enum, str]) -> str:
+    return str(status.value) if isinstance(status, Enum) else status
+
+
+def _list_params(
+    limit: Optional[int],
+    offset: Optional[int],
+    status: Optional[Union[MessageStatus, str]],
+    direction: Optional[str],
+    to: Optional[str],
+    page: Optional[int],
+    q: Optional[str],
+    sandbox: Optional[bool],
+) -> Optional[Dict[str, Any]]:
+    params: Dict[str, Any] = {}
+    for key, value in (
+        ("limit", limit),
+        ("offset", offset),
+        ("status", None if status is None else _status_value(status)),
+        ("direction", direction),
+        ("to", to),
+        ("page", page),
+        ("q", q),
+    ):
+        if value is not None:
+            params[key] = value
+    if sandbox is not None:
+        params["sandbox"] = "true" if sandbox else "false"
+    return params or None
+
+
+def _has_more(response: MessageListResponse, batch_size: int) -> bool:
+    if not response.data:
+        return False
+    if response.pagination is not None:
+        return response.pagination.has_more
+    return len(response.data) >= batch_size
+
+
 def _rcs_send_body(
     to: str,
     text: Optional[str],
@@ -1679,8 +1801,8 @@ def _rcs_send_body(
     has_text = bool(text)
     has_card = bool(card)
     if has_text == has_card:
-        raise SendlyError(
-            message="Provide exactly one of 'text' or 'card'",
+        raise ValidationError(
+            "Provide exactly one of 'text' or 'card'",
             code="invalid_request",
             status_code=400,
         )
