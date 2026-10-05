@@ -2557,7 +2557,6 @@ client.enterprise.workspaces.revoke_key("ws_xxx", "key_abc")
 
 # Pooled credits and auto top-up
 client.enterprise.credits.get()
-client.enterprise.credits.deposit(10000, description="Q2 top-up")
 client.enterprise.settings.update_auto_top_up(
     enabled=True, threshold=1000, amount=5000, source_workspace_id="ws_source"
 )
