@@ -62,23 +62,45 @@ class TestMediaUpload:
 
 
 class TestUploadRejections:
-    def test_a_type_the_route_filters_out_raises_internal_error(
+    def test_a_type_the_route_filters_out_raises_unsupported_media_type(
         self, api_key, httpx_mock: HTTPXMock
     ):
         client = Sendly(api_key)
         httpx_mock.add_response(
             url=f"{BASE}/media",
             method="POST",
-            status_code=500,
-            json={"message": "Only JPEG, PNG, and GIF images are allowed for MMS"},
+            status_code=415,
+            json={
+                "error": "unsupported_media_type",
+                "message": "Only JPEG, PNG, and GIF images are allowed for MMS",
+            },
         )
 
         with pytest.raises(SendlyError) as exc_info:
             client.media.upload(io.BytesIO(b"RIFF0000WEBP"), content_type="image/webp")
 
-        assert exc_info.value.code == "internal_error"
-        assert exc_info.value.status_code == 500
+        assert exc_info.value.code == "unsupported_media_type"
+        assert exc_info.value.status_code == 415
         assert exc_info.value.message == "Only JPEG, PNG, and GIF images are allowed for MMS"
+        assert len(httpx_mock.get_requests()) == 1
+        client.close()
+
+    def test_a_file_over_the_limit_raises_file_too_large(
+        self, api_key, httpx_mock: HTTPXMock
+    ):
+        client = Sendly(api_key)
+        httpx_mock.add_response(
+            url=f"{BASE}/media",
+            method="POST",
+            status_code=413,
+            json={"error": "file_too_large", "message": 'The file in field "file" is too large.'},
+        )
+
+        with pytest.raises(SendlyError) as exc_info:
+            client.media.upload(io.BytesIO(b"\xff" * 16), content_type="image/jpeg")
+
+        assert exc_info.value.code == "file_too_large"
+        assert exc_info.value.status_code == 413
         assert len(httpx_mock.get_requests()) == 1
         client.close()
 
@@ -102,9 +124,10 @@ class TestUploadRejections:
         assert exc_info.value.code == "invalid_file"
         client.close()
 
-    def test_docs_name_both_rejections(self):
+    def test_docs_name_every_rejection(self):
         doc = MediaResource.upload.__doc__ or ""
 
-        assert "``internal_error`` (HTTP 500)" in doc
+        assert "``unsupported_media_type`` (HTTP 415)" in doc
+        assert "``file_too_large`` (HTTP 413)" in doc
         assert "600 KB" in doc
         assert "``invalid_file``" in doc

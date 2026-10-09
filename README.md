@@ -1037,9 +1037,10 @@ client.messages.send(
 
 Uploads accept JPEG, PNG and GIF up to 600 KB. When `content_type` is one of
 those types but the content is not, the upload raises `SendlyError` with code
-`invalid_file`; any other `content_type`, or a file over 600 KB, raises
-`internal_error` (HTTP 500) with the reason in the message. Without MMS enabled
-for your account it is `feature_disabled`.
+`invalid_file`; any other `content_type` raises `unsupported_media_type`
+(HTTP 415) with the reason in the message, and a file over 600 KB raises
+`file_too_large` (HTTP 413). Without MMS enabled for your account it is
+`feature_disabled`.
 
 ## Account & Credits
 

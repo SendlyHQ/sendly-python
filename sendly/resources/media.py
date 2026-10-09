@@ -49,10 +49,11 @@ class MediaResource:
             ValidationError: If no file reached the API (code ``invalid_request``)
             SendlyError: With code ``invalid_file`` when content_type is
                 image/jpeg, image/png or image/gif but the content is not a
-                JPEG, PNG or GIF; ``internal_error`` (HTTP 500) when
-                content_type is any other type or the file is over 600 KB,
-                with the reason in the message; or ``feature_disabled`` when
-                MMS is not enabled for your account
+                JPEG, PNG or GIF; ``unsupported_media_type`` (HTTP 415) when
+                content_type is any other type, with the reason in the
+                message; ``file_too_large`` (HTTP 413) when the file is over
+                600 KB; or ``feature_disabled`` when MMS is not enabled for
+                your account
             AuthenticationError: If the API key is invalid
             RateLimitError: If rate limit is exceeded
 
