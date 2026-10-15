@@ -927,6 +927,7 @@ class WebhookEventType(str, Enum):
     SHORT_CODE_LIVE = "short_code.live"
     SHORT_CODE_SUSPENDED = "short_code.suspended"
     SHORT_CODE_REACTIVATED = "short_code.reactivated"
+    SHORT_CODE_CANCELLED = "short_code.cancelled"
     SHORT_CODE_PAYMENT_SUCCEEDED = "short_code.payment_succeeded"
     SHORT_CODE_PAYMENT_FAILED = "short_code.payment_failed"
 
