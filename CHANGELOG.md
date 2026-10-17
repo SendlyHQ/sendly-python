@@ -1,5 +1,15 @@
 # sendly (Python)
 
+## 4.4.0
+
+### Minor Changes
+
+- **WhatsApp to SMS fallback.** `messages.send(channel="whatsapp", fallback_to_sms=True)` (sync and async) sends `fallbackToSms`. When WhatsApp can't deliver the message, it goes as an SMS from the same number, billed as an SMS. The new `WhatsAppSmsFallback` (`channel`, `status`, `reason`, `message_id`, `credits_used`, `error`, `content_dropped`) is `WhatsAppMessage.fallback`; when the SMS went in place of the WhatsApp message, `status` is `failed` and `fallback.status` is `sent`. `Message` (from `messages.get` and `list`) gains `fallback`, `fallback_of` (on the SMS, the WhatsApp message it replaced), `message_format`, `batch_id` and `media_urls`.
+
+### Patch Changes
+
+- A WhatsApp send that WhatsApp accepted but Sendly couldn't fully record answers 201 without `whatsapp` or `createdAt`, and `messages.send` raised `invalid_response` on it. It now returns the message, with `whatsapp` and `created_at` set to `None`. That message is in flight and was charged, so don't send it again.
+
 ## 4.3.0
 
 ### Minor Changes
