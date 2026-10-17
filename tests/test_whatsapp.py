@@ -1129,3 +1129,93 @@ class TestWhatsAppSmsFallback:
         payload = json.loads(httpx_mock.get_request().read().decode())
         assert payload["fallbackToSms"] is True
         assert message.fallback.status == "sent"
+
+
+class TestWhatsAppRecoveredSend:
+    def test_reads_a_send_that_was_accepted_but_not_fully_recorded(
+        self, api_key, httpx_mock: HTTPXMock
+    ):
+        client = Sendly(api_key)
+        httpx_mock.add_response(
+            url="https://sendly.live/api/v1/messages",
+            method="POST",
+            status_code=201,
+            json={
+                "id": "msg_wa_1",
+                "channel": "whatsapp",
+                "message_format": "whatsapp",
+                "messageFormat": "whatsapp",
+                "to": "+15551234567",
+                "from": "+15559876543",
+                "status": "sent",
+                "direction": "outbound",
+                "segments": 1,
+                "metadata": {},
+            },
+        )
+
+        message = client.messages.send(
+            channel="whatsapp", to="+15551234567", from_="+15559876543", text="Hi"
+        )
+
+        assert message.id == "msg_wa_1"
+        assert message.status.value == "sent"
+        assert message.whatsapp is None
+        assert message.created_at is None
+        assert len(httpx_mock.get_requests()) == 1
+
+
+class TestMessageFallbackFields:
+    def test_get_reads_the_fallback_of_a_whatsapp_message(
+        self, api_key, mock_message, httpx_mock: HTTPXMock
+    ):
+        client = Sendly(api_key)
+        httpx_mock.add_response(
+            url="https://sendly.live/api/v1/messages/msg_wa_1",
+            method="GET",
+            json={
+                **mock_message,
+                "id": "msg_wa_1",
+                "status": "failed",
+                "message_format": "whatsapp",
+                "messageFormat": "whatsapp",
+                "fallback": {
+                    "channel": "sms",
+                    "status": "sent",
+                    "reason": "whatsapp_failed",
+                    "messageId": "msg_sms_1",
+                    "creditsUsed": 2,
+                },
+            },
+        )
+
+        message = client.messages.get("msg_wa_1")
+
+        assert message.message_format == "whatsapp"
+        assert message.fallback.status == "sent"
+        assert message.fallback.message_id == "msg_sms_1"
+        assert message.fallback_of is None
+
+    def test_get_links_an_sms_fallback_to_its_whatsapp_message(
+        self, api_key, mock_message, httpx_mock: HTTPXMock
+    ):
+        client = Sendly(api_key)
+        httpx_mock.add_response(
+            url="https://sendly.live/api/v1/messages/msg_sms_1",
+            method="GET",
+            json={
+                **mock_message,
+                "id": "msg_sms_1",
+                "message_format": "sms",
+                "batch_id": "batch_1",
+                "media_urls": ["https://example.com/a.png"],
+                "fallbackOf": "msg_wa_1",
+            },
+        )
+
+        message = client.messages.get("msg_sms_1")
+
+        assert message.fallback_of == "msg_wa_1"
+        assert message.batch_id == "batch_1"
+        assert message.media_urls == ["https://example.com/a.png"]
+        assert message.fallback is None

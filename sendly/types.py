@@ -280,6 +280,28 @@ class Message(BaseModel):
     ai_metadata: Optional[Dict[str, Any]] = Field(
         default=None, alias="aiMetadata", description="AI classification metadata for inbound messages"
     )
+    message_format: Optional[str] = Field(
+        default=None,
+        description="The channel and format the message was sent in: sms, mms, whatsapp or rcs",
+    )
+    batch_id: Optional[str] = Field(
+        default=None, description="The batch that sent the message, for a batch message"
+    )
+    media_urls: Optional[List[str]] = Field(
+        default=None, description="The message's media URLs, when it has media"
+    )
+    fallback: Optional["WhatsAppSmsFallback"] = Field(
+        default=None,
+        description=(
+            "On a WhatsApp message sent with fallback_to_sms: what happened to "
+            "its SMS fallback"
+        ),
+    )
+    fallback_of: Optional[str] = Field(
+        default=None,
+        alias="fallbackOf",
+        description="On an SMS fallback: the id of the WhatsApp message it replaced",
+    )
 
     model_config = ConfigDict(populate_by_name=True)
 
@@ -3240,6 +3262,9 @@ class WhatsAppSmsFallback(BaseModel):
     model_config = ConfigDict(populate_by_name=True)
 
 
+Message.model_rebuild()
+
+
 class WhatsAppMessage(BaseModel):
     """A sent WhatsApp message"""
 
@@ -3274,9 +3299,18 @@ class WhatsAppMessage(BaseModel):
             "failed send gives its slot back"
         ),
     )
-    whatsapp: WhatsAppMessageDetails = Field(..., description="WhatsApp-specific details")
-    created_at: str = Field(
-        ..., alias="createdAt", description="When the message was created (ISO 8601)"
+    whatsapp: Optional[WhatsAppMessageDetails] = Field(
+        default=None,
+        description=(
+            "WhatsApp-specific details. None when WhatsApp accepted the message "
+            "but recording it failed: the message is in flight and was charged, "
+            "so don't send it again"
+        ),
+    )
+    created_at: Optional[str] = Field(
+        default=None,
+        alias="createdAt",
+        description="When the message was created (ISO 8601). None in the same case as whatsapp",
     )
     metadata: Optional[Dict[str, Any]] = Field(
         default=None, description="Custom JSON metadata attached to the message"
