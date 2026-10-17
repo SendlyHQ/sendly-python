@@ -1046,3 +1046,86 @@ class TestAsyncWhatsApp:
         assert message.whatsapp.kind == "text"
 
         await client.close()
+
+
+class TestWhatsAppSmsFallback:
+    def _fallback_message(self, mock_whatsapp_message):
+        return {
+            **mock_whatsapp_message,
+            "status": "failed",
+            "creditsUsed": 0,
+            "fallback": {
+                "channel": "sms",
+                "status": "sent",
+                "reason": "window_closed",
+                "messageId": "msg_sms_1",
+                "creditsUsed": 2,
+            },
+        }
+
+    def test_sends_fallback_to_sms_and_reads_the_fallback(
+        self, api_key, mock_whatsapp_message, httpx_mock: HTTPXMock
+    ):
+        client = Sendly(api_key)
+        httpx_mock.add_response(
+            url="https://sendly.live/api/v1/messages",
+            method="POST",
+            json=self._fallback_message(mock_whatsapp_message),
+        )
+
+        message = client.messages.send(
+            channel="whatsapp",
+            to="+15551234567",
+            from_="+15559876543",
+            text="Your table is ready!",
+            fallback_to_sms=True,
+        )
+
+        payload = json.loads(httpx_mock.get_request().read().decode())
+        assert payload["fallbackToSms"] is True
+        assert message.status.value == "failed"
+        assert message.fallback is not None
+        assert message.fallback.status == "sent"
+        assert message.fallback.message_id == "msg_sms_1"
+        assert message.fallback.credits_used == 2
+
+    def test_leaves_fallback_out_by_default(
+        self, api_key, mock_whatsapp_message, httpx_mock: HTTPXMock
+    ):
+        client = Sendly(api_key)
+        httpx_mock.add_response(
+            url="https://sendly.live/api/v1/messages",
+            method="POST",
+            json=mock_whatsapp_message,
+        )
+
+        message = client.messages.send(
+            channel="whatsapp", to="+15551234567", from_="+15559876543", text="Hi"
+        )
+
+        payload = json.loads(httpx_mock.get_request().read().decode())
+        assert "fallbackToSms" not in payload
+        assert message.fallback is None
+
+    @pytest.mark.asyncio
+    async def test_async_sends_fallback_to_sms(
+        self, api_key, mock_whatsapp_message, httpx_mock: HTTPXMock
+    ):
+        httpx_mock.add_response(
+            url="https://sendly.live/api/v1/messages",
+            method="POST",
+            json=self._fallback_message(mock_whatsapp_message),
+        )
+
+        async with AsyncSendly(api_key) as client:
+            message = await client.messages.send(
+                channel="whatsapp",
+                to="+15551234567",
+                from_="+15559876543",
+                text="Your table is ready!",
+                fallback_to_sms=True,
+            )
+
+        payload = json.loads(httpx_mock.get_request().read().decode())
+        assert payload["fallbackToSms"] is True
+        assert message.fallback.status == "sent"

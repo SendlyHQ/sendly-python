@@ -3207,6 +3207,39 @@ class WhatsAppMessageDetails(BaseModel):
     model_config = ConfigDict(populate_by_name=True)
 
 
+class WhatsAppSmsFallback(BaseModel):
+    """The SMS fallback of a WhatsApp message sent with fallback_to_sms=True"""
+
+    channel: str = Field(default="sms", description='Always "sms"')
+    status: str = Field(
+        ...,
+        description=(
+            "pending until WhatsApp's outcome is known; sent when the SMS went; "
+            "failed when the SMS was refused or credits ran out; unavailable "
+            "when the SMS could no longer be sent from this number; skipped "
+            "when the WhatsApp failure isn't one an SMS fixes"
+        ),
+    )
+    reason: Optional[str] = Field(
+        default=None,
+        description="What made it fall back: window_closed, whatsapp_refused or whatsapp_failed",
+    )
+    message_id: Optional[str] = Field(
+        default=None, alias="messageId", description="The SMS message's id, once it exists"
+    )
+    credits_used: Optional[int] = Field(
+        default=None, alias="creditsUsed", description="Credits charged for the SMS"
+    )
+    error: Optional[str] = Field(default=None, description="Why the SMS didn't go")
+    content_dropped: Optional[List[str]] = Field(
+        default=None,
+        alias="contentDropped",
+        description="Template parts with no SMS form, such as quick_replies",
+    )
+
+    model_config = ConfigDict(populate_by_name=True)
+
+
 class WhatsAppMessage(BaseModel):
     """A sent WhatsApp message"""
 
@@ -3247,6 +3280,14 @@ class WhatsAppMessage(BaseModel):
     )
     metadata: Optional[Dict[str, Any]] = Field(
         default=None, description="Custom JSON metadata attached to the message"
+    )
+    fallback: Optional[WhatsAppSmsFallback] = Field(
+        default=None,
+        description=(
+            "Present when the send asked for fallback_to_sms. When WhatsApp "
+            "couldn't take the message and it went as an SMS, status is "
+            "failed and fallback.status is sent"
+        ),
     )
 
     model_config = ConfigDict(populate_by_name=True)

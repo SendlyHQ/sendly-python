@@ -126,9 +126,13 @@ class MessagesResource:
                 'url': 'https://example.com/track'}}]. Card buttons go in
                 card['suggestions'] instead. Dropped (and disclosed via
                 message.rcs.suggestions_dropped) when the send falls back
-            fallback_to_sms: RCS only - deliver as SMS when the recipient
+            fallback_to_sms: RCS - deliver as SMS when the recipient
                 doesn't support RCS (default True). Pass False to get a 422
-                rcs_not_supported_for_recipient instead
+                rcs_not_supported_for_recipient instead. WhatsApp - default
+                False; True sends an SMS from the same number when WhatsApp
+                can't deliver the message (see message.fallback). The number
+                must be able to send SMS to the recipient, or the API answers
+                403 sms_fallback_unavailable
             idempotency_key: Optional key (1-255 printable ASCII characters)
                 sent as the Idempotency-Key header - retrying with the same
                 key returns the original result instead of sending again.
@@ -242,6 +246,8 @@ class MessagesResource:
                 body["template"] = template
             if metadata:
                 body["metadata"] = metadata
+            if fallback_to_sms is not None:
+                body["fallbackToSms"] = fallback_to_sms
 
             data = self._http.request(
                 method="POST",
@@ -1116,6 +1122,8 @@ class AsyncMessagesResource:
                 body["template"] = template
             if metadata:
                 body["metadata"] = metadata
+            if fallback_to_sms is not None:
+                body["fallbackToSms"] = fallback_to_sms
 
             data = await self._http.request(
                 method="POST",

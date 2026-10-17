@@ -160,6 +160,7 @@ from .types import (
     TenDlcThroughput,
     # WhatsApp types
     WhatsAppMessage,
+    WhatsAppSmsFallback,
     WhatsAppMessageDetails,
     WhatsAppMessageTemplate,
     WhatsAppSender,
@@ -409,6 +410,7 @@ __all__ = [
     "TenDlcThroughput",
     # WhatsApp types
     "WhatsAppMessage",
+    "WhatsAppSmsFallback",
     "WhatsAppMessageDetails",
     "WhatsAppMessageTemplate",
     "WhatsAppSender",
