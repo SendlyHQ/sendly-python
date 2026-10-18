@@ -1088,6 +1088,19 @@ class TestWhatsAppSmsFallback:
         assert message.fallback.status == "sent"
         assert message.fallback.message_id == "msg_sms_1"
         assert message.fallback.credits_used == 2
+        assert message.fell_back is True
+
+    @pytest.mark.parametrize("status", ["pending", "failed", "unavailable", "skipped"])
+    def test_fell_back_is_false_until_the_sms_went(
+        self, mock_whatsapp_message, status
+    ):
+        message = WhatsAppMessage.model_validate(
+            {
+                **mock_whatsapp_message,
+                "fallback": {"channel": "sms", "status": status},
+            }
+        )
+        assert message.fell_back is False
 
     def test_leaves_fallback_out_by_default(
         self, api_key, mock_whatsapp_message, httpx_mock: HTTPXMock
@@ -1106,6 +1119,7 @@ class TestWhatsAppSmsFallback:
         payload = json.loads(httpx_mock.get_request().read().decode())
         assert "fallbackToSms" not in payload
         assert message.fallback is None
+        assert message.fell_back is False
 
     @pytest.mark.asyncio
     async def test_async_sends_fallback_to_sms(
@@ -1129,6 +1143,7 @@ class TestWhatsAppSmsFallback:
         payload = json.loads(httpx_mock.get_request().read().decode())
         assert payload["fallbackToSms"] is True
         assert message.fallback.status == "sent"
+        assert message.fell_back is True
 
 
 class TestWhatsAppRecoveredSend:

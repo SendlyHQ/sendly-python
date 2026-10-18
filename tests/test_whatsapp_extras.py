@@ -892,8 +892,7 @@ def no_async_sleep(monkeypatch):
 START_FAILED = {
     "error": "whatsapp_verification_start_failed",
     "message": (
-        "WhatsApp couldn't start verifying this number. Any setup fee is refunded "
-        "automatically. Please try again shortly."
+        "WhatsApp couldn't start verifying this number. Please try again shortly."
     ),
 }
 
@@ -944,8 +943,7 @@ class TestServerErrorsOnCallsThatMustNotRepeat:
             json={
                 "error": "internal_error",
                 "message": (
-                    "Something went wrong asking WhatsApp for the code. Any setup fee is "
-                    "refunded automatically. Please try again."
+                    "Something went wrong asking WhatsApp for the code. Please try again."
                 ),
             },
             is_reusable=True,

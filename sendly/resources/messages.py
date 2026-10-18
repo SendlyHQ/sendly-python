@@ -152,8 +152,8 @@ class MessagesResource:
             SendlyError: ``whatsapp_send_failed`` on WhatsApp: 422 when
                 WhatsApp refused the message, which is final and not retried
                 (cached under the idempotency key and replayed for 24 hours);
-                502 when the message provably never reached the carrier, so it
-                was not sent and is safe to send again. A 502 is never cached,
+                503 when the message provably never reached the carrier, so it
+                was not sent and is safe to send again. A 503 is never cached,
                 so the SDK retries it like any 5xx under the same idempotency
                 key. Either way the message wasn't charged. No send returns
                 503 ``whatsapp_unavailable``.
@@ -1060,8 +1060,13 @@ class AsyncMessagesResource:
             agent_id: RCS only - the agent to send as
             card: RCS only - a rich card (title and description required)
             suggestions: RCS only - suggestion chips for a text message
-            fallback_to_sms: RCS only - deliver as SMS when the recipient
-                doesn't support RCS (default True)
+            fallback_to_sms: RCS - deliver as SMS when the recipient
+                doesn't support RCS (default True). Pass False to get a 422
+                rcs_not_supported_for_recipient instead. WhatsApp - default
+                False; True sends an SMS from the same number when WhatsApp
+                can't deliver the message (see message.fallback). The number
+                must be able to send SMS to the recipient, or the API answers
+                403 sms_fallback_unavailable
             idempotency_key: Optional key (1-255 printable ASCII characters)
                 sent as the Idempotency-Key header - retrying with the same
                 key returns the original result instead of sending again.

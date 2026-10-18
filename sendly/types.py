@@ -2941,7 +2941,7 @@ class WhatsAppSignup(BaseModel):
             "it still shows the earlier code until the new one arrives. Once "
             "WhatsApp has checked a code, only a code that arrived after the "
             "last submission or resend is returned. A submission answered with "
-            "502 whatsapp_verification_unavailable is not counted, so the same "
+            "503 whatsapp_verification_unavailable is not counted, so the same "
             "unchecked code can come back, and submitting it again is safe"
         ),
     )
@@ -3320,11 +3320,16 @@ class WhatsAppMessage(BaseModel):
         description=(
             "Present when the send asked for fallback_to_sms. When WhatsApp "
             "couldn't take the message and it went as an SMS, status is "
-            "failed and fallback.status is sent"
+            "failed and fallback.status is sent (check with fell_back)"
         ),
     )
 
     model_config = ConfigDict(populate_by_name=True)
+
+    @property
+    def fell_back(self) -> bool:
+        """True when the message went as an SMS instead: fallback.status is sent"""
+        return self.fallback is not None and self.fallback.status == "sent"
 
 
 # ============================================================================

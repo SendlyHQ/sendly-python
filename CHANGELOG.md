@@ -1,5 +1,16 @@
 # sendly (Python)
 
+## 4.5.0
+
+### Minor Changes
+
+- `WhatsAppMessage.fell_back` is `True` when the message went as an SMS instead (`fallback.status` is `"sent"`), matching Ruby's `fell_back?` and the other SDKs.
+
+### Patch Changes
+
+- The async `messages.send` docstring said `fallback_to_sms` is RCS only; it documents the WhatsApp fallback too, like the sync one.
+- Docs give 503, the status the API sends, instead of 502 for the WhatsApp and voice errors raised when WhatsApp or the carrier couldn't be reached: `whatsapp_send_failed` when the message never reached WhatsApp (not sent, and safe to send again with the same idempotency key), the WhatsApp signup, profile, conversational-components and calling errors, `voice_attach_failed` and `carrier_refused`. The API answers every 502 as a 503 with a `Sendly-Upstream-Status: 502` header. Nothing changes at runtime.
+
 ## 4.4.0
 
 ### Minor Changes
