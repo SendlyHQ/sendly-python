@@ -5,7 +5,7 @@ WhatsApp is a first-class Sendly channel: connect a number you own, create
 Meta-reviewed message templates, and send via
 ``client.messages.send(channel='whatsapp', ...)``.
 
-Connecting a number is free (no setup or monthly fee) and always ends
+Connecting a number costs a one-time $9.99 fee (no monthly fee) and always ends
 with a human step: ``signup.create()`` returns a ``connect_url`` that a person
 must open in a browser and log in with Facebook to link their WhatsApp
 Business Account. Hand the URL to your user - that connection cannot be
@@ -99,35 +99,41 @@ class WhatsAppSignupResource:
     ) -> Union[WhatsAppSignupSession, WhatsAppSignup]:
         """Start connecting a number to WhatsApp.
 
-        Connecting a number is free (no setup or monthly fee). Returns a
+        Charges a one-time $9.99 connection fee per number (no monthly fee) to
+        your card when the connection starts, and returns a
         ``connect_url``. Completing the connection requires a human: hand the
         URL to your user - they open it in a browser and log in with Facebook
         to link their WhatsApp Business Account. Then poll :meth:`get` until
         the status is ``active``.
 
         Calling again for a number with an in-flight signup returns the
-        existing signup (same ``connect_url``).
+        existing signup (same ``connect_url``) without charging again.
         Requires a live API key with the ``whatsapp:write`` scope and, in a
         team workspace, an owner or admin (``settings:write``). After the
         Facebook step the signup stays ``registering`` while WhatsApp
         activates the number. Activation usually takes a few minutes but can
         take hours. If it hasn't finished about 6 hours after the session
-        began, the session fails with ``registration_timeout``.
+        began, the session fails with ``registration_timeout`` and the fee is
+        refunded. If the connection fails, the $9.99 fee is refunded
+        automatically; once the number has connected it is not refundable, and
+        a later disconnect gets nothing back.
 
         Pass ``business_account_id`` to add the number to a WhatsApp
         Business Account this workspace has already connected, without the
-        Facebook step. It is free too: WhatsApp sends the number a 6-digit
-        code by text or voice call. This returns a :class:`WhatsAppSignup` with status
+        Facebook step. The same $9.99 fee applies (refunded automatically if the
+        connection fails), then WhatsApp sends the number a 6-digit code by
+        text or voice call. This returns a :class:`WhatsAppSignup` with status
         ``verifying`` and no ``connect_url``: submit the code with
         :meth:`verify`, or read it from :meth:`get` as ``verification_code``
         once the text reaches the number. Calling again for a number that is
-        already verifying returns that signup without a second code, with
-        two exceptions: if the first call stopped before
+        already verifying returns that signup without a second charge or a
+        second code, with two exceptions: if the first call stopped before
         the code was requested, the repeat requests it (201); and a verifying
-        signup more than 3 hours old is failed and a new one is started. With ``business_account_id`` a 5xx, a timeout or a
+        signup more than 3 hours old is failed and refunded, and a new charged
+        one is started. With ``business_account_id`` a 5xx, a timeout or a
         network error is raised at once, never retried: each attempt can
-        start a new signup and ask WhatsApp for another code. Only a 429 the
-        API never ran is retried.
+        start a new signup that is charged and, when it fails, refunded. Only
+        a 429 the API never ran is retried.
 
         Args:
             phone_number: The number to connect, in E.164 format. Must be an
@@ -164,12 +170,12 @@ class WhatsAppSignupResource:
                 lacks ``whatsapp:write`` or the role isn't owner or admin.
             SendlyError: ``whatsapp_requires_live_key`` (403) with a test key.
             SendlyError: ``whatsapp_unavailable`` (503) while WhatsApp
-                connections are unavailable. Only signup
+                connections are unavailable. Nothing is charged. Only signup
                 returns it, with ``retryAfter: 3600`` in the body and a
                 ``Retry-After: 3600`` header. The SDK retries it like any 5xx
                 before raising.
             SendlyError: ``whatsapp_signup_limit_reached`` (429) after 5
-                failed signups (or 20 cancelled) in 24 hours. Not retried;
+                failed, charged signups (or 20 cancelled) in 24 hours. Not retried;
                 try again the next day.
             SendlyError: ``whatsapp_verification_in_progress`` (409) without
                 ``business_account_id`` for a number being added by code;
@@ -184,8 +190,8 @@ class WhatsAppSignupResource:
                 ``whatsapp_already_enabled`` (409) when it is connected.
             SendlyError: ``whatsapp_verification_start_failed``: 422 when
                 WhatsApp refused to send a code (final), 503 when it couldn't
-                be reached. Either way the signup failed; start again. Not
-                retried automatically.
+                be reached. Either way the signup failed and the fee is
+                refunded; start again. Not retried automatically.
         """
         validate_phone_number(phone_number)
         body = _signup_body(phone_number, business_account_id, verification_method, display_name)
@@ -228,7 +234,7 @@ class WhatsAppSignupResource:
                 wrong code; ``e.response.attempts_remaining`` says how many
                 tries are left.
             SendlyError: ``whatsapp_verification_failed`` (409) after 5 wrong
-                codes: the signup failed.
+                codes: the signup failed and the fee is refunded.
             SendlyError: ``whatsapp_verification_busy`` (409) while another
                 code for the number is being checked; try again in a moment.
             SendlyError: ``signup_not_active`` (409) when the signup isn't
@@ -766,7 +772,7 @@ class WhatsAppResource:
     """WhatsApp API resource (sync)
 
     Example:
-        >>> # 1. Connect a number (free, no monthly fee). The connect
+        >>> # 1. Connect a number ($9.99 one-time, no monthly fee). The connect
         >>> #    URL must be opened by a human - they log in with Facebook in
         >>> #    a browser to link their WhatsApp Business Account.
         >>> signup = client.whatsapp.signup.create('+15559876543')

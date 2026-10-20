@@ -413,7 +413,7 @@ File uploads (`media.upload()`, `business_upgrade.start()` and `resubmit()`,
 make is the `too_many_concurrent_verifications` wait. `whatsapp.signup.verify()`
 and `whatsapp.signup.create()` with a `business_account_id` also raise a
 timeout, a network error or a `5xx` at once, because repeating them can use up
-a verification attempt or start a new signup; they still wait out a
+a verification attempt or start a new charged signup; they still wait out a
 `429` the API never ran.
 
 After the last attempt the SDK raises the error it last saw (`TimeoutError`,
@@ -1320,7 +1320,7 @@ client.links.update(link.code, True)
 
 ## WhatsApp
 
-Connect a number you own to WhatsApp (free to connect, no monthly fee), create
+Connect a number you own to WhatsApp ($9.99 one-time, no monthly fee), create
 Meta-reviewed message templates, and send on the `whatsapp` channel. Connecting
 the first number always ends with a human step: hand the `connect_url` to your
 user - they open it in a browser and log in with Facebook to link their
@@ -1352,8 +1352,11 @@ print(f'Open {signup.connect_url} and log in with Facebook')
 # After the Facebook step it stays 'registering' while WhatsApp activates the
 # number. Activation usually takes a few minutes but can take hours. If it
 # hasn't finished about 6 hours after the session began, the session fails
-# with registration_timeout ('failed', with signup.failure_reasons explaining
-# why).
+# with registration_timeout and the fee is refunded ('failed', with
+# signup.failure_reasons explaining why). The one-time $9.99 connection fee is
+# charged to your card when you start connecting the number and refunded
+# automatically if the connection fails; it is not refundable once the number
+# is connected.
 
 # 2. Create a template (Meta reviews it, usually 24-48h). category is required
 # (UTILITY, AUTHENTICATION or MARKETING) with no default, and an update can't
@@ -1437,7 +1440,7 @@ components = client.whatsapp.senders.get_conversational_components('+15555550123
 client.whatsapp.senders.set_calling('+15555550123', enabled=True)
 
 # Add another number to an account you already connected: no Facebook step.
-# Free, like a Facebook connection. WhatsApp sends the number a 6-digit code
+# Same $9.99 fee, refunded if it fails. WhatsApp sends the number a 6-digit code
 senders = client.whatsapp.senders.list().senders
 account_id = next(
     s.business_account_id for s in senders if s.status == 'active' and s.business_account_id
@@ -1461,7 +1464,7 @@ Senders also carry `business_account_id` (None while `pending`),
 name on file), `calling_enabled`, and `outbound_calling_allowed`, which is
 False for +1, +20, +84 and +234 numbers. A signup that is `verifying` carries
 `verification_method` and `verification_attempts_remaining`; after 5 wrong
-codes it fails with `verification_failed`. Calls carry
+codes it fails with `verification_failed` and the fee is refunded. Calls carry
 `channel` (`phone`, `whatsapp` or `browser`; see `CallChannel`).
 
 `verification_code` comes only from `signup.get()`. Until a code has been
@@ -1494,7 +1497,7 @@ Errors specific to WhatsApp:
   body carries `retryAfter: 3600` and the response a `Retry-After: 3600`
   header. The SDK retries it like any `5xx` before raising;
   `e.response.retry_after` says how many seconds to wait before trying again.
-- `whatsapp_signup_limit_reached` (HTTP 429) after 5 failed signups in
+- `whatsapp_signup_limit_reached` (HTTP 429) after 5 failed, charged signups in
   24 hours. It is final and not retried; try again the next day.
 - `whatsapp_send_failed` on a send: HTTP 422 when WhatsApp refused the message,
   which is final (cached under the idempotency key and replayed for 24 hours),
@@ -1530,8 +1533,8 @@ Errors specific to WhatsApp:
 - Adding a number by code: `whatsapp_business_account_not_found` (HTTP 404),
   `display_name_required` (HTTP 400), `whatsapp_signup_in_progress` and
   `whatsapp_already_enabled` (HTTP 409), and
-  `whatsapp_verification_start_failed` (HTTP 422 refused, 503 unreachable). A
-  Facebook `signup.create()` for a number being
+  `whatsapp_verification_start_failed` (HTTP 422 refused, 503 unreachable; the
+  fee is refunded either way). A Facebook `signup.create()` for a number being
   added by code gets `whatsapp_verification_in_progress` (HTTP 409).
   `verify()`: `invalid_verification_code` (HTTP 400, not 6 digits),
   `whatsapp_verification_code_invalid` (HTTP 422, with
