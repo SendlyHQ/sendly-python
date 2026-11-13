@@ -18,10 +18,16 @@ from sendly.errors import SendlyError, ValidationError
 from sendly.types import (
     DeletedVoiceAgent,
     EmergencyAddress,
+    SipTransport,
     Voice,
     VoiceAgent,
+    VoiceAgentConnection,
+    VoiceAgentCustomLlmConnectionInput,
+    VoiceAgentKind,
     VoiceAgentListResponse,
+    VoiceAgentSipConnectionInput,
     VoiceAgentTools,
+    VoiceAgentWebsocketConnectionInput,
     VoiceListResponse,
     VoiceMode,
     VoiceNumber,
@@ -791,6 +797,423 @@ class TestVoiceAgents:
         assert exc_info.value.status_code == 403
 
         client.close()
+
+
+@pytest.fixture
+def mock_websocket_agent(mock_agent):
+    return {
+        **mock_agent,
+        "kind": "websocket",
+        "connection": {
+            "url": "wss://agent.example.com/calls",
+            "audioFormat": "pcm16_16000",
+            "hasAuthToken": True,
+            "customParameters": {"tenant": "acme"},
+        },
+        "hasSigningSecret": True,
+    }
+
+
+class TestVoiceAgentsBringYourOwn:
+    def test_sendly_agent_reads_kind_and_no_connection(self, api_key, mock_agent, httpx_mock):
+        client = Sendly(api_key)
+
+        httpx_mock.add_response(
+            url=f"{BASE}/voice/agents/{AGENT_ID}",
+            method="GET",
+            json={**mock_agent, "kind": "sendly", "connection": None, "hasSigningSecret": False},
+        )
+
+        result = client.voice.agents.get(AGENT_ID)
+
+        assert result.kind == VoiceAgentKind.SENDLY
+        assert result.connection is None
+        assert result.has_signing_secret is False
+        assert result.signing_secret is None
+
+        client.close()
+
+    def test_older_response_defaults_new_fields(self, api_key, mock_agent, httpx_mock):
+        client = Sendly(api_key)
+
+        httpx_mock.add_response(
+            url=f"{BASE}/voice/agents/{AGENT_ID}", method="GET", json=mock_agent
+        )
+
+        result = client.voice.agents.get(AGENT_ID)
+
+        assert result.kind == "sendly"
+        assert result.connection is None
+        assert result.has_signing_secret is False
+
+        client.close()
+
+    def test_create_websocket_agent_sends_kind_and_connection(
+        self, live_api_key, mock_websocket_agent, httpx_mock: HTTPXMock
+    ):
+        client = Sendly(live_api_key)
+
+        httpx_mock.add_response(
+            url=f"{BASE}/voice/agents",
+            method="POST",
+            status_code=201,
+            json={**mock_websocket_agent, "signingSecret": "whsec_agent_once"},
+        )
+
+        result = client.voice.agents.create(
+            "Support line",
+            kind=VoiceAgentKind.WEBSOCKET,
+            connection={
+                "url": "wss://agent.example.com/calls",
+                "audio_format": "pcm16_16000",
+                "auth_token": "tok_123",
+                "custom_parameters": {"tenant_id": "acme"},
+            },
+        )
+
+        request = httpx_mock.get_request()
+        assert AUTO_KEY.match(request.headers["Idempotency-Key"])
+        assert _body(request) == {
+            "name": "Support line",
+            "kind": "websocket",
+            "connection": {
+                "url": "wss://agent.example.com/calls",
+                "audioFormat": "pcm16_16000",
+                "authToken": "tok_123",
+                "customParameters": {"tenant_id": "acme"},
+            },
+        }
+        assert result.kind == VoiceAgentKind.WEBSOCKET
+        assert isinstance(result.connection, VoiceAgentConnection)
+        assert result.connection.url == "wss://agent.example.com/calls"
+        assert result.connection.audio_format == "pcm16_16000"
+        assert result.connection.has_auth_token is True
+        assert result.connection.custom_parameters == {"tenant": "acme"}
+        assert result.connection.base_url is None
+        assert result.connection.uri is None
+        assert result.has_signing_secret is True
+        assert result.signing_secret == "whsec_agent_once"
+
+        client.close()
+
+    def test_create_custom_llm_agent_from_input_model(
+        self, live_api_key, mock_agent, httpx_mock: HTTPXMock
+    ):
+        client = Sendly(live_api_key)
+
+        httpx_mock.add_response(
+            url=f"{BASE}/voice/agents",
+            method="POST",
+            status_code=201,
+            json={
+                **mock_agent,
+                "kind": "custom_llm",
+                "connection": {
+                    "baseUrl": "https://llm.example.com/v1",
+                    "model": "support-v2",
+                    "headerNames": ["X-Tenant"],
+                    "hasApiKey": True,
+                },
+                "hasSigningSecret": True,
+                "signingSecret": "whsec_agent_once",
+            },
+        )
+
+        result = client.voice.agents.create(
+            "Front desk",
+            instructions="Answer questions about opening hours.",
+            kind="custom_llm",
+            connection=VoiceAgentCustomLlmConnectionInput(
+                base_url="https://llm.example.com/v1",
+                model="support-v2",
+                api_key="sk_example",
+                headers={"X-Tenant": "acme"},
+            ),
+        )
+
+        assert _body(httpx_mock.get_request()) == {
+            "name": "Front desk",
+            "instructions": "Answer questions about opening hours.",
+            "kind": "custom_llm",
+            "connection": {
+                "baseUrl": "https://llm.example.com/v1",
+                "model": "support-v2",
+                "apiKey": "sk_example",
+                "headers": {"X-Tenant": "acme"},
+            },
+        }
+        assert result.kind == VoiceAgentKind.CUSTOM_LLM
+        assert result.connection.base_url == "https://llm.example.com/v1"
+        assert result.connection.model == "support-v2"
+        assert result.connection.header_names == ["X-Tenant"]
+        assert result.connection.has_api_key is True
+        assert result.connection.url is None
+
+        client.close()
+
+    def test_create_sip_agent_parses_sip_connection(
+        self, live_api_key, mock_agent, httpx_mock: HTTPXMock
+    ):
+        client = Sendly(live_api_key)
+
+        httpx_mock.add_response(
+            url=f"{BASE}/voice/agents",
+            method="POST",
+            status_code=201,
+            json={
+                **mock_agent,
+                "kind": "sip",
+                "connection": {
+                    "uri": "sip:+15125550100@sip.example.com",
+                    "transport": "tls",
+                    "mediaEncryption": "require",
+                    "username": "frontdesk",
+                    "hasPassword": True,
+                    "headers": {"X-Account": "42"},
+                },
+                "hasSigningSecret": True,
+                "signingSecret": "whsec_agent_once",
+            },
+        )
+
+        result = client.voice.agents.create(
+            "Front desk",
+            kind=VoiceAgentKind.SIP,
+            connection=VoiceAgentSipConnectionInput(
+                uri="sip:+15125550100@sip.example.com",
+                transport=SipTransport.TLS,
+                media_encryption="require",
+                username="frontdesk",
+                password="hunter2",
+            ),
+        )
+
+        assert _body(httpx_mock.get_request())["connection"] == {
+            "uri": "sip:+15125550100@sip.example.com",
+            "transport": "tls",
+            "mediaEncryption": "require",
+            "username": "frontdesk",
+            "password": "hunter2",
+        }
+        assert result.kind == "sip"
+        assert result.connection.uri == "sip:+15125550100@sip.example.com"
+        assert result.connection.transport == SipTransport.TLS
+        assert result.connection.media_encryption == "require"
+        assert result.connection.username == "frontdesk"
+        assert result.connection.has_password is True
+        assert result.connection.headers == {"X-Account": "42"}
+
+        client.close()
+
+    def test_unknown_kind_is_kept(self, api_key, mock_agent, httpx_mock):
+        client = Sendly(api_key)
+
+        httpx_mock.add_response(
+            url=f"{BASE}/voice/agents/{AGENT_ID}",
+            method="GET",
+            json={**mock_agent, "kind": "future_kind", "connection": {"endpoint": "x"}},
+        )
+
+        result = client.voice.agents.get(AGENT_ID)
+
+        assert result.kind == "future_kind"
+        assert isinstance(result.connection, VoiceAgentConnection)
+
+        client.close()
+
+    def test_update_merges_connection_keeping_left_out_and_null_keys(
+        self, live_api_key, mock_websocket_agent, httpx_mock: HTTPXMock
+    ):
+        client = Sendly(live_api_key)
+
+        httpx_mock.add_response(
+            url=f"{BASE}/voice/agents/{AGENT_ID}", method="PATCH", json=mock_websocket_agent
+        )
+        httpx_mock.add_response(
+            url=f"{BASE}/voice/agents/{AGENT_ID}", method="PATCH", json=mock_websocket_agent
+        )
+
+        client.voice.agents.update(
+            AGENT_ID, connection={"authToken": None, "url": "wss://agent.example.com/v2"}
+        )
+        client.voice.agents.update(
+            AGENT_ID, connection=VoiceAgentWebsocketConnectionInput(auth_token=None)
+        )
+
+        first, second = httpx_mock.get_requests()
+        assert _body(first) == {
+            "connection": {"authToken": None, "url": "wss://agent.example.com/v2"}
+        }
+        assert _body(second) == {"connection": {"authToken": None}}
+
+        client.close()
+
+    def test_update_rotate_signing_secret_sends_true_and_reads_secret(
+        self, live_api_key, mock_websocket_agent, httpx_mock: HTTPXMock
+    ):
+        client = Sendly(live_api_key)
+
+        httpx_mock.add_response(
+            url=f"{BASE}/voice/agents/{AGENT_ID}",
+            method="PATCH",
+            json={**mock_websocket_agent, "signingSecret": "whsec_rotated"},
+        )
+
+        result = client.voice.agents.update(
+            AGENT_ID, rotate_signing_secret=True, idempotency_key="rotate-1"
+        )
+
+        request = httpx_mock.get_request()
+        assert request.headers["Idempotency-Key"] == "rotate-1"
+        assert _body(request) == {"rotateSigningSecret": True}
+        assert result.signing_secret == "whsec_rotated"
+
+        client.close()
+
+    def test_update_never_sends_rotate_false(
+        self, live_api_key, mock_agent, httpx_mock: HTTPXMock
+    ):
+        client = Sendly(live_api_key)
+
+        httpx_mock.add_response(
+            url=f"{BASE}/voice/agents/{AGENT_ID}", method="PATCH", json=mock_agent
+        )
+
+        client.voice.agents.update(AGENT_ID, name="Reception", rotate_signing_secret=False)
+
+        assert _body(httpx_mock.get_request()) == {"name": "Reception"}
+
+        client.close()
+
+    def test_update_switches_kind_with_connection(
+        self, live_api_key, mock_agent, httpx_mock: HTTPXMock
+    ):
+        client = Sendly(live_api_key)
+
+        httpx_mock.add_response(
+            url=f"{BASE}/voice/agents/{AGENT_ID}", method="PATCH", json=mock_agent
+        )
+        httpx_mock.add_response(
+            url=f"{BASE}/voice/agents/{AGENT_ID}", method="PATCH", json=mock_agent
+        )
+
+        client.voice.agents.update(
+            AGENT_ID,
+            kind="sip",
+            connection={"uri": "sip:+15125550100@sip.example.com", "media_encryption": "allow"},
+            rotate_signing_secret=True,
+        )
+        client.voice.agents.update(AGENT_ID, kind=VoiceAgentKind.SENDLY)
+
+        first, second = httpx_mock.get_requests()
+        assert _body(first) == {
+            "kind": "sip",
+            "connection": {
+                "uri": "sip:+15125550100@sip.example.com",
+                "mediaEncryption": "allow",
+            },
+            "rotateSigningSecret": True,
+        }
+        assert _body(second) == {"kind": "sendly"}
+
+        client.close()
+
+    def test_rejects_non_dict_connection_before_request(self, live_api_key):
+        client = Sendly(live_api_key)
+
+        with pytest.raises(ValidationError, match="connection"):
+            client.voice.agents.create("Front desk", kind="websocket", connection="wss://x")
+
+        with pytest.raises(ValidationError, match="connection"):
+            client.voice.agents.update(AGENT_ID, connection=["wss://x"])
+
+        client.close()
+
+    def test_byo_agents_not_enabled_403(
+        self, live_api_key, mock_error_response, httpx_mock: HTTPXMock
+    ):
+        client = Sendly(live_api_key, max_retries=0)
+
+        httpx_mock.add_response(
+            url=f"{BASE}/voice/agents",
+            method="POST",
+            status_code=403,
+            json=mock_error_response(
+                "byo_agents_not_enabled", "Your own agents are not switched on for this workspace."
+            ),
+        )
+
+        with pytest.raises(SendlyError) as exc_info:
+            client.voice.agents.create(
+                "Front desk", kind="websocket", connection={"url": "wss://agent.example.com"}
+            )
+
+        assert exc_info.value.code == "byo_agents_not_enabled"
+        assert exc_info.value.status_code == 403
+
+        client.close()
+
+    def test_invalid_connection_400_is_validation_error(
+        self, live_api_key, mock_error_response, httpx_mock: HTTPXMock
+    ):
+        client = Sendly(live_api_key, max_retries=0)
+
+        httpx_mock.add_response(
+            url=f"{BASE}/voice/agents/{AGENT_ID}",
+            method="PATCH",
+            status_code=400,
+            json=mock_error_response(
+                "invalid_request", "connection.url: must start with wss://"
+            ),
+        )
+
+        with pytest.raises(ValidationError) as exc_info:
+            client.voice.agents.update(AGENT_ID, connection={"url": "ws://agent.example.com"})
+
+        assert "connection.url" in str(exc_info.value)
+
+        client.close()
+
+    async def test_async_create_and_rotate(
+        self, live_api_key, mock_websocket_agent, httpx_mock: HTTPXMock
+    ):
+        client = AsyncSendly(live_api_key)
+
+        httpx_mock.add_response(
+            url=f"{BASE}/voice/agents",
+            method="POST",
+            status_code=201,
+            json={**mock_websocket_agent, "signingSecret": "whsec_agent_once"},
+        )
+        httpx_mock.add_response(
+            url=f"{BASE}/voice/agents/{AGENT_ID}",
+            method="PATCH",
+            json={**mock_websocket_agent, "signingSecret": "whsec_rotated"},
+        )
+
+        created = await client.voice.agents.create(
+            "Support line",
+            kind="websocket",
+            connection=VoiceAgentWebsocketConnectionInput(url="wss://agent.example.com/calls"),
+        )
+        rotated = await client.voice.agents.update(
+            AGENT_ID, connection={"custom_parameters": None}, rotate_signing_secret=True
+        )
+
+        assert created.signing_secret == "whsec_agent_once"
+        assert rotated.signing_secret == "whsec_rotated"
+        first, second = httpx_mock.get_requests()
+        assert _body(first) == {
+            "name": "Support line",
+            "kind": "websocket",
+            "connection": {"url": "wss://agent.example.com/calls"},
+        }
+        assert _body(second) == {
+            "connection": {"customParameters": None},
+            "rotateSigningSecret": True,
+        }
+
+        await client.close()
 
 
 class TestVoices:

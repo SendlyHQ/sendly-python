@@ -26,7 +26,11 @@ from sendly.types import (
     CallRecording,
     CallStatus,
     CallTranscriptLine,
+    CallTransfer,
+    CallTransferFailureReason,
+    CallTransferStatus,
     OwnedNumbersResponse,
+    VoiceAgentKind,
 )
 
 BASE = "https://sendly.live/api/v1"
@@ -1047,8 +1051,309 @@ class TestAsyncCalls:
         await client.close()
 
 
+class TestCallsBringYourOwnAgent:
+    def test_parses_agent_kind_fallback_and_transfer(
+        self, api_key, mock_completed_call, httpx_mock: HTTPXMock
+    ):
+        client = Sendly(api_key)
+
+        httpx_mock.add_response(
+            url=f"{BASE}/calls/{CALL_ID}",
+            method="GET",
+            json={
+                **mock_completed_call,
+                "direction": "inbound",
+                "hangupClass": "agent_byo_failed",
+                "agentKind": "websocket",
+                "agentFallback": True,
+                "transfer": {"to": "+15555550142", "status": "failed", "failureReason": "busy"},
+            },
+        )
+
+        result = client.calls.get(CALL_ID)
+
+        assert result.agent_kind == VoiceAgentKind.WEBSOCKET
+        assert result.agent_fallback is True
+        assert result.hangup_class == "agent_byo_failed"
+        assert isinstance(result.transfer, CallTransfer)
+        assert result.transfer.to == "+15555550142"
+        assert result.transfer.status == CallTransferStatus.FAILED
+        assert result.transfer.failure_reason == CallTransferFailureReason.BUSY
+
+        client.close()
+
+    def test_defaults_when_never_transferred(self, api_key, mock_call, httpx_mock: HTTPXMock):
+        client = Sendly(api_key)
+
+        httpx_mock.add_response(
+            url=f"{BASE}/calls/{CALL_ID}",
+            method="GET",
+            json={**mock_call, "agentKind": "sendly", "agentFallback": False, "transfer": None},
+        )
+        httpx_mock.add_response(url=f"{BASE}/calls/other", method="GET", json=mock_call)
+
+        current = client.calls.get(CALL_ID)
+        older = client.calls.get("other")
+
+        assert current.agent_kind == "sendly"
+        assert current.agent_fallback is False
+        assert current.transfer is None
+        assert older.agent_kind is None
+        assert older.agent_fallback is False
+        assert older.transfer is None
+
+        client.close()
+
+    def test_unknown_transfer_values_are_kept(self, api_key, mock_call, httpx_mock: HTTPXMock):
+        client = Sendly(api_key)
+
+        httpx_mock.add_response(
+            url=f"{BASE}/calls/{CALL_ID}",
+            method="GET",
+            json={
+                **mock_call,
+                "agentKind": "future_kind",
+                "transfer": {"to": "+15555550142", "status": "queued", "failureReason": None},
+            },
+        )
+
+        result = client.calls.get(CALL_ID)
+
+        assert result.agent_kind == "future_kind"
+        assert result.transfer.status == "queued"
+        assert result.transfer.failure_reason is None
+
+        client.close()
+
+    def test_list_sends_agent_kind(self, api_key, httpx_mock: HTTPXMock):
+        client = Sendly(api_key)
+
+        httpx_mock.add_response(
+            method="GET",
+            url=re.compile(rf"^{re.escape(BASE)}/calls\?.*$"),
+            json={
+                "data": [],
+                "pagination": {"total": 0, "limit": 50, "offset": 0, "hasMore": False},
+            },
+        )
+        httpx_mock.add_response(
+            method="GET",
+            url=re.compile(rf"^{re.escape(BASE)}/calls\?.*$"),
+            json={
+                "data": [],
+                "pagination": {"total": 0, "limit": 50, "offset": 0, "hasMore": False},
+            },
+        )
+
+        client.calls.list(agent_kind=VoiceAgentKind.CUSTOM_LLM, agent_id=AGENT_ID)
+        client.calls.list(agent_kind="sip")
+
+        first, second = httpx_mock.get_requests()
+        assert dict(first.url.params) == {"agentId": AGENT_ID, "agentKind": "custom_llm"}
+        assert dict(second.url.params) == {"agentKind": "sip"}
+        assert "agent_kind" not in first.url.params
+
+        client.close()
+
+
+class TestCallsTransfer:
+    def test_transfer_to_number(self, live_api_key, mock_call, httpx_mock: HTTPXMock):
+        client = Sendly(live_api_key)
+
+        httpx_mock.add_response(
+            url=f"{BASE}/calls/{CALL_ID}/transfer",
+            method="POST",
+            status_code=202,
+            json={
+                **mock_call,
+                "direction": "inbound",
+                "status": "active",
+                "agentKind": "websocket",
+                "agentFallback": False,
+                "transfer": {"to": "+15555550142", "status": "pending", "failureReason": None},
+            },
+        )
+
+        result = client.calls.transfer(CALL_ID, "+15555550142")
+
+        assert isinstance(result, Call)
+        assert result.transfer.status == CallTransferStatus.PENDING
+        assert result.transfer.to == "+15555550142"
+        assert result.transfer.failure_reason is None
+
+        request = httpx_mock.get_request()
+        assert request.method == "POST"
+        assert request.url.path == f"/api/v1/calls/{CALL_ID}/transfer"
+        assert AUTO_KEY.match(request.headers["Idempotency-Key"])
+        assert json.loads(request.read().decode()) == {"to": "+15555550142"}
+
+        client.close()
+
+    def test_transfer_without_to_sends_empty_body(
+        self, live_api_key, mock_call, httpx_mock: HTTPXMock
+    ):
+        client = Sendly(live_api_key)
+
+        httpx_mock.add_response(
+            url=f"{BASE}/calls/{CALL_ID}/transfer",
+            method="POST",
+            status_code=202,
+            json={
+                **mock_call,
+                "transfer": {"to": "+15555550190", "status": "pending", "failureReason": None},
+            },
+        )
+
+        result = client.calls.transfer(CALL_ID, idempotency_key="transfer-1")
+
+        assert result.transfer.to == "+15555550190"
+        request = httpx_mock.get_request()
+        assert request.headers["Idempotency-Key"] == "transfer-1"
+        assert json.loads(request.read().decode()) == {}
+
+        client.close()
+
+    def test_transfer_percent_encodes_id(self, live_api_key, mock_call, httpx_mock: HTTPXMock):
+        client = Sendly(live_api_key)
+
+        httpx_mock.add_response(
+            url=f"{BASE}/calls/call%2Fwith%20space/transfer", method="POST", json=mock_call
+        )
+
+        client.calls.transfer("call/with space", to="+15555550142")
+
+        assert (
+            httpx_mock.get_request().url.raw_path
+            == b"/api/v1/calls/call%2Fwith%20space/transfer"
+        )
+
+        client.close()
+
+    def test_transfer_rejects_empty_id_before_request(self, live_api_key):
+        client = Sendly(live_api_key)
+
+        with pytest.raises(ValidationError, match="id is required"):
+            client.calls.transfer("", to="+15555550142")
+
+        client.close()
+
+    @pytest.mark.parametrize(
+        "status,code",
+        [
+            (400, "transfer_to_required"),
+            (403, "outbound_not_enabled"),
+            (409, "call_not_active"),
+            (409, "call_not_transferable"),
+            (409, "transfer_in_progress"),
+        ],
+    )
+    def test_transfer_errors(
+        self, live_api_key, mock_error_response, httpx_mock: HTTPXMock, status, code
+    ):
+        client = Sendly(live_api_key, max_retries=0)
+
+        httpx_mock.add_response(
+            url=f"{BASE}/calls/{CALL_ID}/transfer",
+            method="POST",
+            status_code=status,
+            json=mock_error_response(code, "The call can't be transferred."),
+        )
+
+        with pytest.raises(SendlyError) as exc_info:
+            client.calls.transfer(CALL_ID)
+
+        assert exc_info.value.code == code
+        assert exc_info.value.status_code == status
+
+        client.close()
+
+    def test_transfer_insufficient_credits_402(
+        self, live_api_key, mock_error_response, httpx_mock: HTTPXMock
+    ):
+        client = Sendly(live_api_key, max_retries=0)
+
+        httpx_mock.add_response(
+            url=f"{BASE}/calls/{CALL_ID}/transfer",
+            method="POST",
+            status_code=402,
+            json=mock_error_response(
+                "insufficient_credits",
+                "No credits left.",
+                creditsNeeded=1,
+                currentBalance=0,
+            ),
+        )
+
+        with pytest.raises(InsufficientCreditsError) as exc_info:
+            client.calls.transfer(CALL_ID, to="+15555550142")
+
+        assert exc_info.value.credits_needed == 1
+
+        client.close()
+
+    def test_transfer_invalid_to_400_is_validation_error(
+        self, live_api_key, mock_error_response, httpx_mock: HTTPXMock
+    ):
+        client = Sendly(live_api_key, max_retries=0)
+
+        httpx_mock.add_response(
+            url=f"{BASE}/calls/{CALL_ID}/transfer",
+            method="POST",
+            status_code=400,
+            json=mock_error_response("invalid_request", "to must be a US or Canadian number."),
+        )
+
+        with pytest.raises(ValidationError):
+            client.calls.transfer(CALL_ID, to="+442071234567")
+
+        client.close()
+
+    async def test_async_transfer_with_and_without_to(
+        self, live_api_key, mock_call, httpx_mock: HTTPXMock
+    ):
+        client = AsyncSendly(live_api_key)
+
+        pending = {
+            **mock_call,
+            "transfer": {"to": "+15555550142", "status": "pending", "failureReason": None},
+        }
+        httpx_mock.add_response(
+            url=f"{BASE}/calls/{CALL_ID}/transfer", method="POST", status_code=202, json=pending
+        )
+        httpx_mock.add_response(
+            url=f"{BASE}/calls/{CALL_ID}/transfer", method="POST", status_code=202, json=pending
+        )
+        httpx_mock.add_response(
+            method="GET",
+            url=f"{BASE}/calls?agentKind=websocket",
+            json={
+                "data": [],
+                "pagination": {"total": 0, "limit": 50, "offset": 0, "hasMore": False},
+            },
+        )
+
+        with_to = await client.calls.transfer(CALL_ID, to="+15555550142")
+        without_to = await client.calls.transfer(CALL_ID)
+        await client.calls.list(agent_kind="websocket")
+
+        assert with_to.transfer.status == "pending"
+        assert without_to.transfer.to == "+15555550142"
+        first, second, third = httpx_mock.get_requests()
+        assert json.loads(first.read().decode()) == {"to": "+15555550142"}
+        assert json.loads(second.read().decode()) == {}
+        assert AUTO_KEY.match(first.headers["Idempotency-Key"])
+        assert dict(third.url.params) == {"agentKind": "websocket"}
+
+        await client.close()
+
+
 class TestCreateDocumentsErrorCodes:
     def test_from_number_not_supported_is_listed(self):
         from sendly.resources.calls import CallsResource
 
         assert "from_number_not_supported" in (CallsResource.create.__doc__ or "")
+
+    def test_agent_kind_unsupported_is_listed(self):
+        from sendly.resources.calls import CallsResource
+
+        assert "agent_kind_unsupported" in (CallsResource.create.__doc__ or "")

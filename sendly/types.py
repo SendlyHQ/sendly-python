@@ -6,7 +6,7 @@ This module contains all type definitions and data models.
 
 from datetime import datetime
 from enum import Enum
-from typing import Any, Dict, List, Literal, Optional
+from typing import Any, Dict, List, Literal, Optional, Union
 
 from pydantic import AliasChoices, BaseModel, ConfigDict, Field, model_validator
 
@@ -4102,6 +4102,63 @@ class CallRecordingStatus(str, Enum):
     FAILED = "failed"
 
 
+class VoiceAgentKind(str, Enum):
+    """Who answers a call. ``sendly``: Sendly writes the replies from the
+    agent's instructions. ``custom_llm``: Sendly listens and speaks, and your
+    chat completions endpoint writes each reply. ``sip``: Sendly connects the
+    caller to your agent's SIP address. ``websocket``: Sendly streams the call
+    audio to your ``wss://`` server and plays back what it sends.
+    ``VoiceAgent.kind`` and ``Call.agent_kind`` are plain strings, so a value
+    added later is kept as it is."""
+
+    SENDLY = "sendly"
+    CUSTOM_LLM = "custom_llm"
+    SIP = "sip"
+    WEBSOCKET = "websocket"
+
+
+class CallTransferStatus(str, Enum):
+    """Where a transfer is. ``pending`` while the number rings, ``completed``
+    once the caller was handed over, ``failed`` when it did not go through
+    and the caller is still on the call. ``CallTransfer.status`` is a plain
+    string, so a value added later is kept as it is."""
+
+    PENDING = "pending"
+    COMPLETED = "completed"
+    FAILED = "failed"
+
+
+class CallTransferFailureReason(str, Enum):
+    """Why a transfer failed. ``unknown`` when no definite answer came back.
+    ``CallTransfer.failure_reason`` is a plain string, so a value added later
+    is kept as it is."""
+
+    BUSY = "busy"
+    NO_ANSWER = "no_answer"
+    DECLINED = "declined"
+    UNAVAILABLE = "unavailable"
+    UNKNOWN = "unknown"
+
+
+class CallTransfer(BaseModel):
+    """The latest transfer on a call"""
+
+    to: str = Field(..., description="The number the caller is transferred to, in E.164")
+    status: str = Field(
+        ..., description="pending | completed | failed (see CallTransferStatus)"
+    )
+    failure_reason: Optional[str] = Field(
+        default=None,
+        alias="failureReason",
+        description=(
+            "busy | no_answer | declined | unavailable | unknown (see "
+            "CallTransferFailureReason); None unless status is failed"
+        ),
+    )
+
+    model_config = ConfigDict(populate_by_name=True)
+
+
 class CallTranscriptLine(BaseModel):
     """One line of an agent-handled call's transcript"""
 
@@ -4158,6 +4215,26 @@ class Call(BaseModel):
     billing: str = Field(..., description="metered | settled | unbilled (see CallBilling)")
     hangup_class: Optional[str] = Field(
         default=None, alias="hangupClass", description="Why the call ended; None while live"
+    )
+    agent_kind: Optional[str] = Field(
+        default=None,
+        alias="agentKind",
+        description=(
+            "sendly | custom_llm | sip | websocket (see VoiceAgentKind): which kind "
+            "of agent answered; None when no agent handled the call"
+        ),
+    )
+    agent_fallback: bool = Field(
+        default=False,
+        alias="agentFallback",
+        description=(
+            "True when your own agent could not be reached (or dropped), so Sendly "
+            "said a short line and transferred the caller or took a message"
+        ),
+    )
+    transfer: Optional[CallTransfer] = Field(
+        default=None,
+        description="The latest transfer on the call; None when it was never transferred",
     )
     recording_status: Optional[str] = Field(
         default=None,
@@ -4249,8 +4326,27 @@ class ListCallsOptions(BaseModel):
     direction: Optional[str] = Field(default=None, description="inbound | outbound")
     kind: Optional[str] = Field(default=None, description="pstn | internal")
     agent_id: Optional[str] = Field(default=None, alias="agentId")
+    agent_kind: Optional[str] = Field(
+        default=None,
+        alias="agentKind",
+        description="sendly | custom_llm | sip | websocket (see VoiceAgentKind)",
+    )
     to: Optional[str] = Field(default=None, description="Exact E.164 match")
     from_: Optional[str] = Field(default=None, alias="from", description="Exact E.164 match")
+
+    model_config = ConfigDict(populate_by_name=True)
+
+
+class TransferCallRequest(BaseModel):
+    """Request body for ``client.calls.transfer()``"""
+
+    to: Optional[str] = Field(
+        default=None,
+        description=(
+            "Number to transfer the caller to, in E.164 (US or Canada); the "
+            "agent's transfer number when left out"
+        ),
+    )
 
     model_config = ConfigDict(populate_by_name=True)
 
@@ -4359,13 +4455,229 @@ class VoiceAgentTools(BaseModel):
         default=None,
         alias="transferTo",
         description=(
-            "A number in E.164 for handing callers to a person. The agent does not "
-            "transfer calls yet: it offers to pass a message on and takes the "
-            "caller's name and number instead."
+            "A number in E.164 the agent transfers a caller to when asked for a "
+            "person, and where client.calls.transfer() sends the caller when no "
+            "number is given. None when the agent cannot transfer."
         ),
     )
 
     model_config = ConfigDict(populate_by_name=True)
+
+
+class SipTransport(str, Enum):
+    """How a SIP call is carried. A ``sips:`` address always uses ``tls``."""
+
+    AUTO = "auto"
+    UDP = "udp"
+    TCP = "tcp"
+    TLS = "tls"
+
+
+class SipMediaEncryption(str, Enum):
+    """Whether a SIP call's audio is encrypted. ``require`` needs ``tls``."""
+
+    DISABLE = "disable"
+    ALLOW = "allow"
+    REQUIRE = "require"
+
+
+class WebsocketAudioFormat(str, Enum):
+    """The audio format a ``websocket`` agent receives and sends"""
+
+    PCM16_16000 = "pcm16_16000"
+    PCM16_24000 = "pcm16_24000"
+    PCM16_8000 = "pcm16_8000"
+    MULAW_8000 = "mulaw_8000"
+
+
+class VoiceAgentConnection(BaseModel):
+    """How Sendly reaches your own agent, as returned on a ``VoiceAgent``.
+
+    Which fields are set follows the agent's ``kind``: ``custom_llm`` sets
+    ``base_url``, ``model``, ``header_names`` and ``has_api_key``; ``sip``
+    sets ``uri``, ``transport``, ``media_encryption``, ``username``,
+    ``has_password`` and ``headers``; ``websocket`` sets ``url``,
+    ``audio_format``, ``has_auth_token`` and ``custom_parameters``. The rest
+    are None. Secrets (the API key, header values for ``custom_llm``, the SIP
+    password and the auth token) are never returned, only whether one is
+    saved.
+    """
+
+    base_url: Optional[str] = Field(
+        default=None,
+        alias="baseUrl",
+        description="custom_llm: Sendly sends POST {base_url}/chat/completions with streaming on",
+    )
+    model: Optional[str] = Field(
+        default=None, description="custom_llm: the model name sent in each request"
+    )
+    header_names: Optional[List[str]] = Field(
+        default=None,
+        alias="headerNames",
+        description="custom_llm: names of the extra headers sent; their values are never returned",
+    )
+    has_api_key: Optional[bool] = Field(
+        default=None, alias="hasApiKey", description="custom_llm: whether an API key is saved"
+    )
+    uri: Optional[str] = Field(
+        default=None,
+        description="sip: your agent's SIP address, e.g. sip:+15125550100@sip.example.com",
+    )
+    transport: Optional[str] = Field(
+        default=None, description="sip: auto | udp | tcp | tls (see SipTransport)"
+    )
+    media_encryption: Optional[str] = Field(
+        default=None,
+        alias="mediaEncryption",
+        description="sip: disable | allow | require (see SipMediaEncryption)",
+    )
+    username: Optional[str] = Field(default=None, description="sip: digest auth username, or None")
+    has_password: Optional[bool] = Field(
+        default=None, alias="hasPassword", description="sip: whether a password is saved"
+    )
+    headers: Optional[Dict[str, str]] = Field(
+        default=None, description="sip: extra X- headers sent on the call"
+    )
+    url: Optional[str] = Field(default=None, description="websocket: your wss:// server")
+    audio_format: Optional[str] = Field(
+        default=None,
+        alias="audioFormat",
+        description="websocket: the audio format both ways (see WebsocketAudioFormat)",
+    )
+    has_auth_token: Optional[bool] = Field(
+        default=None, alias="hasAuthToken", description="websocket: whether an auth token is saved"
+    )
+    custom_parameters: Optional[Dict[str, str]] = Field(
+        default=None,
+        alias="customParameters",
+        description="websocket: sent to your server in the start message",
+    )
+
+    model_config = ConfigDict(populate_by_name=True)
+
+
+class VoiceAgentCustomLlmConnectionInput(BaseModel):
+    """``connection`` for a ``custom_llm`` agent on create or update.
+
+    Only the fields you set are sent. On an update that keeps the kind, the
+    fields you leave out keep their saved values. For ``api_key`` and
+    ``headers``, leaving the field out keeps the saved value and None removes
+    it.
+    """
+
+    base_url: Optional[str] = Field(
+        default=None,
+        alias="baseUrl",
+        description=(
+            "An https:// URL, up to 2048 characters, with no credentials or #; a "
+            "trailing / is dropped. Sendly sends POST {base_url}/chat/completions "
+            "with streaming on. Required when the agent becomes custom_llm."
+        ),
+    )
+    model: Optional[str] = Field(
+        default=None,
+        description="1-200 characters: letters, digits and _ . : / @ + -",
+    )
+    api_key: Optional[str] = Field(
+        default=None,
+        alias="apiKey",
+        description="Sent as Authorization: Bearer. None removes the saved key.",
+    )
+    headers: Optional[Dict[str, str]] = Field(
+        default=None,
+        description=(
+            "Up to 10 extra headers with secret values. Replaces the saved set; "
+            "None removes them. Authorization, Content-Type, Content-Length, Host, "
+            "Connection, Transfer-Encoding, User-Agent and X-Sendly-* can't be set."
+        ),
+    )
+
+    model_config = ConfigDict(populate_by_name=True)
+
+
+class VoiceAgentSipConnectionInput(BaseModel):
+    """``connection`` for a ``sip`` agent on create or update.
+
+    Only the fields you set are sent. On an update that keeps the kind, the
+    fields you leave out keep their saved values. Leaving ``password`` out
+    keeps the saved one and None removes it.
+    """
+
+    uri: Optional[str] = Field(
+        default=None,
+        description=(
+            "sip: or sips: with a user part and a hostname (not an IP address), "
+            "e.g. sip:+15125550100@sip.example.com. Only ;transport= may follow."
+        ),
+    )
+    transport: Optional[str] = Field(
+        default=None,
+        description="auto | udp | tcp | tls (see SipTransport); defaults to tcp",
+    )
+    media_encryption: Optional[str] = Field(
+        default=None,
+        alias="mediaEncryption",
+        description=(
+            "disable | allow | require (see SipMediaEncryption); defaults to allow. "
+            "require needs the tls transport."
+        ),
+    )
+    username: Optional[str] = Field(default=None, description="Digest auth username")
+    password: Optional[str] = Field(
+        default=None, description="Digest auth password. None removes the saved one."
+    )
+    headers: Optional[Dict[str, str]] = Field(
+        default=None,
+        description=(
+            "Up to 10 headers named X-... (not X-Sendly-...). Replaces the saved "
+            "set; None removes them."
+        ),
+    )
+
+    model_config = ConfigDict(populate_by_name=True)
+
+
+class VoiceAgentWebsocketConnectionInput(BaseModel):
+    """``connection`` for a ``websocket`` agent on create or update.
+
+    Only the fields you set are sent. On an update that keeps the kind, the
+    fields you leave out keep their saved values. Leaving ``auth_token`` out
+    keeps the saved one and None removes it.
+    """
+
+    url: Optional[str] = Field(
+        default=None,
+        description="A wss:// URL, up to 2048 characters, with no credentials or #",
+    )
+    audio_format: Optional[str] = Field(
+        default=None,
+        alias="audioFormat",
+        description="One WebsocketAudioFormat value; defaults to pcm16_16000",
+    )
+    auth_token: Optional[str] = Field(
+        default=None,
+        alias="authToken",
+        description="Sent as Authorization: Bearer. None removes the saved token.",
+    )
+    custom_parameters: Optional[Dict[str, str]] = Field(
+        default=None,
+        alias="customParameters",
+        description=(
+            "Up to 20 string values (keys 1-40 characters of letters, digits and "
+            "_ . : -, values up to 500 characters) sent in the start message. "
+            "Replaces the saved set; None removes them."
+        ),
+    )
+
+    model_config = ConfigDict(populate_by_name=True)
+
+
+VoiceAgentConnectionInput = Union[
+    VoiceAgentCustomLlmConnectionInput,
+    VoiceAgentSipConnectionInput,
+    VoiceAgentWebsocketConnectionInput,
+    Dict[str, Any],
+]
 
 
 class VoiceAgent(BaseModel):
@@ -4380,6 +4692,32 @@ class VoiceAgent(BaseModel):
     language: str = Field(..., description="Language tag, e.g. en-US")
     greeting: str = Field(default="", description="What the agent says first")
     instructions: str = Field(default="", description="How the agent should behave")
+    kind: str = Field(
+        default="sendly",
+        description="sendly | custom_llm | sip | websocket (see VoiceAgentKind)",
+    )
+    connection: Optional[VoiceAgentConnection] = Field(
+        default=None,
+        description="How Sendly reaches your own agent; None for a sendly agent",
+    )
+    has_signing_secret: bool = Field(
+        default=False,
+        alias="hasSigningSecret",
+        description=(
+            "Whether the agent has a signing secret. Your own agents do: Sendly "
+            "signs every request to them with it"
+        ),
+    )
+    signing_secret: Optional[str] = Field(
+        default=None,
+        alias="signingSecret",
+        description=(
+            "The agent's signing secret, set only on the create or update response "
+            "that just made it (creating your own agent, switching to one, or "
+            "rotate_signing_secret=True); None on every other read. Save it now; "
+            "it is never shown again."
+        ),
+    )
     tools: VoiceAgentTools = Field(
         default_factory=VoiceAgentTools, description="What the agent may do on a call"
     )
@@ -4448,6 +4786,12 @@ class CreateVoiceAgentRequest(BaseModel):
     greeting: Optional[str] = Field(default=None, description="Up to 500 characters")
     instructions: Optional[str] = Field(default=None, description="Up to 4000 characters")
     tools: Optional[VoiceAgentTools] = Field(default=None)
+    kind: Optional[str] = Field(
+        default=None, description="sendly (the default) | custom_llm | sip | websocket"
+    )
+    connection: Optional[Dict[str, Any]] = Field(
+        default=None, description="How Sendly reaches your own agent, matching kind"
+    )
 
     model_config = ConfigDict(populate_by_name=True)
 
@@ -4462,5 +4806,14 @@ class UpdateVoiceAgentRequest(BaseModel):
     greeting: Optional[str] = Field(default=None)
     instructions: Optional[str] = Field(default=None)
     tools: Optional[VoiceAgentTools] = Field(default=None)
+    kind: Optional[str] = Field(default=None, description="sendly | custom_llm | sip | websocket")
+    connection: Optional[Dict[str, Any]] = Field(
+        default=None, description="Merged into the saved connection when kind is unchanged"
+    )
+    rotate_signing_secret: Optional[bool] = Field(
+        default=None,
+        alias="rotateSigningSecret",
+        description="True makes a new signing secret; the old one stops working at once",
+    )
 
     model_config = ConfigDict(populate_by_name=True)

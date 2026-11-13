@@ -517,7 +517,7 @@ contents.
 
 Write methods that accept `idempotency_key` include `messages.send`,
 `messages.schedule`, `messages.send_batch`, `messages.send_group`,
-`calls.create`, `calls.hangup`, every `voice.*` write, and every
+`calls.create`, `calls.hangup`, `calls.transfer`, every `voice.*` write, and every
 `rcs.brands` / `rcs.agents` write.
 
 Full details: https://sendly.live/docs/idempotency
@@ -1839,9 +1839,9 @@ if event.type.startswith('short_code.'):
 ## Voice Calls
 
 Place phone calls that one of your AI agents handles, follow them while they
-ring and after they end, end them early, and download recordings. Requires an
-API key with the `calls:read` / `calls:write` scopes; placing and ending calls
-needs a live key. Voice is enabled workspace by workspace: until it is enabled
+ring and after they end, transfer callers, end calls early, and download
+recordings. Requires an API key with the `calls:read` / `calls:write` scopes;
+placing, transferring and ending calls needs a live key. Voice is enabled workspace by workspace: until it is enabled
 for yours, every call method raises `SendlyError` with code `voice_not_enabled`
 (HTTP 404).
 
@@ -1880,6 +1880,15 @@ for c in page.data:
 if page.pagination.has_more:
     page = client.calls.list(status='completed', direction='outbound', limit=20, offset=20)
 
+# Only calls answered by one kind of agent (sendly, custom_llm, sip, websocket)
+page = client.calls.list(agent_kind='websocket')
+
+# Transfer the caller on an incoming phone call; without `to`, the agent's
+# transfer number (tools.transfer_to) is used
+incoming = client.calls.list(direction='inbound', status='active').data[0]
+incoming = client.calls.transfer(incoming.id, to='+15551234500')
+print(incoming.transfer.status)  # 'pending', then 'completed' or 'failed'
+
 # End a call early (idempotent: an ended call is returned unchanged)
 client.calls.hangup(call.id)
 
@@ -1903,9 +1912,22 @@ Refusals come back as `SendlyError` with a code that says what to do:
 `agent_not_found` / `agent_disabled`, `from_number_required` / `no_voice_number`,
 `from_number_not_supported` (calls are placed from US and Canadian numbers only),
 `number_not_found`, `destination_not_supported`, `outbound_calls_not_enabled`,
-`live_key_required`. Webhooks `call.started`, `call.completed`
+`live_key_required`, and `agent_kind_unsupported` (`sip` and `websocket`
+agents answer incoming calls only). Webhooks `call.started`, `call.completed`
 and `call.recording.ready` carry the same call object in snake_case, including
 `billing` and your `metadata`.
+
+Each call carries `agent_kind` (the kind of agent that answered, or None),
+`agent_fallback` (True when your own agent could not be reached, so Sendly
+said a short line and transferred the caller or took a message) and
+`transfer` (None, or `to`, `status` and `failure_reason`). A transfer answers
+at once with `transfer.status` `pending`; once the caller is handed over the
+call ends `completed` with `hangup_class` `transferred`, and a failed transfer
+leaves the caller on the call. Transfer refusals: `transfer_to_required`,
+`outbound_not_enabled` (a number other than the agent's needs calling out
+switched on), `insufficient_credits`, `call_not_active`,
+`call_not_transferable` (not an incoming phone call) and
+`transfer_in_progress`.
 
 ### Configure voice
 
@@ -1990,9 +2012,50 @@ says the number couldn't be found for emergency registration: contact
 support), `voice_unavailable` (HTTP 503),
 `e911_not_applicable` (only US and Canadian numbers take an emergency
 address) and `invalid_address`; on HTTP 422 the closest valid address is in
-`e.response.model_extra['suggested']`. An agent's `tools.transfer_to` is
-stored, but agents do not transfer calls yet: when a caller asks for a person,
-the agent offers to pass a message on and takes their name and number.
+`e.response.model_extra['suggested']`. An agent's `tools.transfer_to` is the
+number it transfers a caller to when asked for a person.
+
+### Bring your own agent
+
+An agent's `kind` says who writes the replies: `sendly` (the default, from the
+agent's `instructions`), `custom_llm` (Sendly listens and speaks, and your chat
+completions endpoint writes each reply), `sip` (Sendly connects the caller to
+your SIP address) or `websocket` (Sendly streams the call audio to your
+`wss://` server). Your own agents need the workspace's bring-your-own-agent
+feature, which support switches on (`byo_agents_not_enabled` otherwise).
+
+```python
+from sendly import VoiceAgentWebsocketConnectionInput
+
+agent = client.voice.agents.create(
+    'Support line',
+    kind='websocket',
+    connection=VoiceAgentWebsocketConnectionInput(
+        url='wss://agent.example.com/calls', auth_token='tok_123'
+    ),
+)
+secret = agent.signing_secret  # save it now; it is never shown again
+print(agent.connection.url, agent.connection.has_auth_token, agent.has_signing_secret)
+
+# Same kind: the connection is merged, so only what you pass changes
+client.voice.agents.update(agent.id, connection={'custom_parameters': {'tenant': 'acme'}})
+
+# A new signing secret; the old one stops working at once
+secret = client.voice.agents.update(agent.id, rotate_signing_secret=True).signing_secret
+```
+
+`connection` is a `VoiceAgentCustomLlmConnectionInput` (`base_url`, `model`,
+`api_key`, `headers`), `VoiceAgentSipConnectionInput` (`uri`, `transport`,
+`media_encryption`, `username`, `password`, `headers`),
+`VoiceAgentWebsocketConnectionInput` (`url`, `audio_format`, `auth_token`,
+`custom_parameters`) or a dict. A secret you leave out keeps its saved value
+and None removes it. Secrets are never returned: `agent.connection` reports
+`has_api_key`, `has_password` or `has_auth_token` instead. Sendly signs every
+request to your agent with the signing secret
+(`X-Sendly-Signature: t=<unix>,v1=<hex HMAC-SHA256>`); `signing_secret` is set
+only on the create or update response that made it. A `connection` that breaks
+a rule raises `ValidationError` with a message like
+`connection.url: <reason>`.
 
 ## Error Handling
 

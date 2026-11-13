@@ -22,6 +22,7 @@ until it is enabled for yours every method raises ``SendlyError`` with code
 These settings change how real phone calls to your numbers are answered.
 """
 
+from enum import Enum
 from typing import Any, Dict, Optional, Union
 from urllib.parse import quote
 
@@ -31,8 +32,12 @@ from ..errors import ValidationError
 from ..types import (
     DeletedVoiceAgent,
     VoiceAgent,
+    VoiceAgentConnectionInput,
+    VoiceAgentCustomLlmConnectionInput,
     VoiceAgentListResponse,
+    VoiceAgentSipConnectionInput,
     VoiceAgentTools,
+    VoiceAgentWebsocketConnectionInput,
     VoiceListResponse,
     VoiceNumber,
     VoiceNumberListResponse,
@@ -242,6 +247,8 @@ class VoiceAgentsResource:
         greeting: Optional[str] = None,
         instructions: Optional[str] = None,
         tools: Optional[VoiceAgentToolsLike] = None,
+        kind: Optional[EnumLike] = None,
+        connection: Optional[VoiceAgentConnectionInput] = None,
         idempotency_key: Optional[str] = None,
     ) -> VoiceAgent:
         """Create an AI agent. Requires the ``calls:write`` scope and a live
@@ -254,6 +261,18 @@ class VoiceAgentsResource:
         ``can_send_sms`` says whether it has one. A workspace holds up to 20
         agents.
 
+        By default Sendly writes the agent's replies from its
+        ``instructions`` (``kind='sendly'``). To answer with your own agent
+        instead, pass another ``kind`` and its ``connection``: ``custom_llm``
+        (Sendly listens and speaks, and your chat completions endpoint writes
+        each reply), ``sip`` (Sendly connects the caller to your SIP address)
+        or ``websocket`` (Sendly streams the call audio to your ``wss://``
+        server). Your own agents need the workspace's bring-your-own-agent
+        feature, which support switches on. The response to creating one
+        carries ``signing_secret``, which Sendly uses to sign every request to
+        your agent (``X-Sendly-Signature: t=<unix>,v1=<hex HMAC-SHA256>``).
+        Save it now; it is never shown again.
+
         Args:
             name: 1-80 characters.
             enabled: Defaults to True. A disabled agent takes no calls.
@@ -265,22 +284,46 @@ class VoiceAgentsResource:
                 how the agent should handle callers.
             tools: A :class:`~sendly.types.VoiceAgentTools` or a dict.
                 ``send_sms`` (default True) lets the agent text the other
-                party. ``transfer_to`` stores a number for a human handoff,
-                but agents do not transfer calls yet: when a caller asks for a
-                person, the agent offers to pass a message on and takes their
-                name and number.
+                party. ``transfer_to`` is the number the agent transfers a
+                caller to when asked for a person, and the one
+                ``client.calls.transfer`` uses when given no number.
+            kind: ``sendly`` (the default), ``custom_llm``, ``sip`` or
+                ``websocket`` (see :class:`~sendly.types.VoiceAgentKind`).
+            connection: How Sendly reaches your own agent, matching ``kind``;
+                required for every kind but ``sendly``. A
+                :class:`~sendly.types.VoiceAgentCustomLlmConnectionInput`,
+                :class:`~sendly.types.VoiceAgentSipConnectionInput`,
+                :class:`~sendly.types.VoiceAgentWebsocketConnectionInput` or a
+                dict (snake_case or camelCase keys). It is sent as given: a
+                key you leave out is not sent, and None is sent as null.
+                Hosts must resolve to public internet addresses.
             idempotency_key: Optional key sent as the Idempotency-Key header;
                 generated automatically when omitted.
 
         Raises:
             ValidationError: ``name`` is empty, ``tools`` is not a
-                VoiceAgentTools or dict, or the API answered
-                ``invalid_request``.
+                VoiceAgentTools or dict, ``connection`` is not one of the
+                connection inputs or a dict, or the API answered
+                ``invalid_request`` (for a ``connection`` that is missing or
+                breaks a rule, the message reads
+                ``connection.<field>: <reason>``).
             SendlyError: With ``code`` ``agent_limit`` (HTTP 409),
-                ``forbidden`` or ``voice_not_enabled``.
+                ``byo_agents_not_enabled`` (HTTP 403, a ``kind`` other than
+                ``sendly`` while the workspace's bring-your-own-agent feature
+                is off), ``forbidden`` or ``voice_not_enabled``.
+
+        Example:
+            >>> agent = client.voice.agents.create(
+            ...     'Support line',
+            ...     kind='websocket',
+            ...     connection={'url': 'wss://agent.example.com/calls', 'auth_token': 'tok_123'},
+            ... )
+            >>> secret = agent.signing_secret  # shown only now
         """
         _require(name, "name")
-        body = _agent_body(name, enabled, voice, language, greeting, instructions, tools)
+        body = _agent_body(
+            name, enabled, voice, language, greeting, instructions, tools, kind, connection
+        )
         data = self._http.request(
             method="POST", path="/voice/agents", body=body, idempotency_key=idempotency_key
         )
@@ -311,6 +354,9 @@ class VoiceAgentsResource:
         greeting: Optional[str] = None,
         instructions: Optional[str] = None,
         tools: Optional[VoiceAgentToolsLike] = None,
+        kind: Optional[EnumLike] = None,
+        connection: Optional[VoiceAgentConnectionInput] = None,
+        rotate_signing_secret: Optional[bool] = None,
         idempotency_key: Optional[str] = None,
     ) -> VoiceAgent:
         """Edit an agent. Requires the ``calls:write`` scope and a live API
@@ -318,21 +364,52 @@ class VoiceAgentsResource:
 
         Only the arguments you pass are sent; the rest keep their current
         value. ``tools`` may be partial: keys you leave out keep their current
-        value, and ``transfer_to=None`` clears the handoff number.
+        value, and ``transfer_to=None`` clears the transfer number.
+
+        With the same ``kind``, ``connection`` is merged into the saved one:
+        fields you leave out keep their values. Changing ``kind`` to one of
+        your own needs that kind's ``connection``. Switching a ``sendly``
+        agent to one of your own kinds makes a signing secret, returned once
+        in ``signing_secret``; switching back to ``sendly`` removes the
+        connection and the signing secret.
 
         Args:
             id: Agent identifier.
+            rotate_signing_secret: True makes a new signing secret for your
+                own agent, returned once in ``signing_secret`` (save it now; it
+                is never shown again). The old secret stops working at once.
+                Only True is sent; False or None sends nothing.
             idempotency_key: Optional key sent as the Idempotency-Key header.
 
         See :meth:`create` for the other arguments.
 
         Raises:
-            ValidationError: ``id`` is empty or ``tools`` is not a
-                VoiceAgentTools or dict.
-            SendlyError: With ``code`` ``agent_not_found`` or ``forbidden``.
+            ValidationError: ``id`` is empty, ``tools`` is not a
+                VoiceAgentTools or dict, ``connection`` is not one of the
+                connection inputs or a dict, or the API answered
+                ``invalid_request`` (a ``connection`` that breaks a rule or is
+                missing when ``kind`` changes, or ``rotate_signing_secret`` on
+                a ``sendly`` agent).
+            SendlyError: With ``code`` ``agent_not_found``,
+                ``byo_agents_not_enabled`` (HTTP 403) or ``forbidden``.
+
+        Example:
+            >>> agent = client.voice.agents.update(agent.id, rotate_signing_secret=True)
+            >>> secret = agent.signing_secret  # shown only now
         """
         _require(id, "id")
-        body = _agent_body(name, enabled, voice, language, greeting, instructions, tools)
+        body = _agent_body(
+            name,
+            enabled,
+            voice,
+            language,
+            greeting,
+            instructions,
+            tools,
+            kind,
+            connection,
+            rotate_signing_secret,
+        )
         data = self._http.request(
             method="PATCH", path=_agent_path(id), body=body, idempotency_key=idempotency_key
         )
@@ -489,11 +566,15 @@ class AsyncVoiceAgentsResource:
         greeting: Optional[str] = None,
         instructions: Optional[str] = None,
         tools: Optional[VoiceAgentToolsLike] = None,
+        kind: Optional[EnumLike] = None,
+        connection: Optional[VoiceAgentConnectionInput] = None,
         idempotency_key: Optional[str] = None,
     ) -> VoiceAgent:
         """Create an AI agent. See :meth:`VoiceAgentsResource.create`."""
         _require(name, "name")
-        body = _agent_body(name, enabled, voice, language, greeting, instructions, tools)
+        body = _agent_body(
+            name, enabled, voice, language, greeting, instructions, tools, kind, connection
+        )
         data = await self._http.request(
             method="POST", path="/voice/agents", body=body, idempotency_key=idempotency_key
         )
@@ -516,11 +597,25 @@ class AsyncVoiceAgentsResource:
         greeting: Optional[str] = None,
         instructions: Optional[str] = None,
         tools: Optional[VoiceAgentToolsLike] = None,
+        kind: Optional[EnumLike] = None,
+        connection: Optional[VoiceAgentConnectionInput] = None,
+        rotate_signing_secret: Optional[bool] = None,
         idempotency_key: Optional[str] = None,
     ) -> VoiceAgent:
         """Edit an agent. See :meth:`VoiceAgentsResource.update`."""
         _require(id, "id")
-        body = _agent_body(name, enabled, voice, language, greeting, instructions, tools)
+        body = _agent_body(
+            name,
+            enabled,
+            voice,
+            language,
+            greeting,
+            instructions,
+            tools,
+            kind,
+            connection,
+            rotate_signing_secret,
+        )
         data = await self._http.request(
             method="PATCH", path=_agent_path(id), body=body, idempotency_key=idempotency_key
         )
@@ -612,6 +707,9 @@ def _agent_body(
     greeting: Optional[str],
     instructions: Optional[str],
     tools: Optional[VoiceAgentToolsLike],
+    kind: Optional[EnumLike] = None,
+    connection: Optional[VoiceAgentConnectionInput] = None,
+    rotate_signing_secret: Optional[bool] = None,
 ) -> Dict[str, Any]:
     body: Dict[str, Any] = {}
     optional: Dict[str, Any] = {
@@ -627,7 +725,42 @@ def _agent_body(
             body[key] = value
     if tools is not None:
         body["tools"] = _tools_body(tools)
+    if kind is not None:
+        body["kind"] = _value(kind)
+    if connection is not None:
+        body["connection"] = _connection_body(connection)
+    if rotate_signing_secret is True:
+        body["rotateSigningSecret"] = True
     return body
+
+
+_CONNECTION_KEYS = {
+    "base_url": "baseUrl",
+    "api_key": "apiKey",
+    "media_encryption": "mediaEncryption",
+    "audio_format": "audioFormat",
+    "auth_token": "authToken",
+    "custom_parameters": "customParameters",
+}
+
+_CONNECTION_INPUTS = (
+    VoiceAgentCustomLlmConnectionInput,
+    VoiceAgentSipConnectionInput,
+    VoiceAgentWebsocketConnectionInput,
+)
+
+
+def _connection_body(connection: VoiceAgentConnectionInput) -> Dict[str, Any]:
+    if isinstance(connection, _CONNECTION_INPUTS):
+        raw = connection.model_dump(by_alias=True, exclude_unset=True)
+    elif isinstance(connection, dict):
+        raw = {_CONNECTION_KEYS.get(str(key), str(key)): value for key, value in connection.items()}
+    else:
+        raise ValidationError(
+            "'connection' must be a dict or a VoiceAgentCustomLlmConnectionInput, "
+            "VoiceAgentSipConnectionInput or VoiceAgentWebsocketConnectionInput"
+        )
+    return {key: _value(value) if isinstance(value, Enum) else value for key, value in raw.items()}
 
 
 def _tools_body(tools: VoiceAgentToolsLike) -> Dict[str, Any]:

@@ -3,13 +3,15 @@ Calls Resource - Phone calls handled by your AI agents
 
 A workspace phone number can take and place phone calls. Over the API you
 place an outbound call that one of your AI agents handles, list and inspect
-calls, end a call, and fetch recordings. Switching voice on for a number,
-choosing how it answers, registering an emergency address and creating agents
-live in ``client.voice``; ``client.voice.numbers.list()`` reports each
+calls, transfer a caller to another number, end a call, and fetch
+recordings. Switching voice on for a number, choosing how it answers,
+registering an emergency address and creating agents live in
+``client.voice``; ``client.voice.numbers.list()`` reports each
 number's ``voice_enabled`` and ``voice_mode`` so you can pick a ``from_``.
 
 Reads need an API key with the ``calls:read`` scope, writes ``calls:write``.
-Placing and ending calls needs a live key (``live_key_required`` otherwise).
+Placing, transferring and ending calls needs a live key
+(``live_key_required`` otherwise).
 Voice is enabled workspace by workspace; until it is enabled for yours every
 method raises ``SendlyError`` with code ``voice_not_enabled`` (HTTP 404).
 
@@ -103,6 +105,9 @@ class CallsResource:
                 (register an emergency address for the number first with
                 ``client.voice.numbers.register_emergency_address``),
                 ``lines_busy`` (retry shortly), ``daily_call_limit``,
+                ``agent_kind_unsupported`` (HTTP 409: the agent's ``kind`` is
+                ``sip`` or ``websocket``, which answer incoming calls only;
+                ``custom_llm`` agents can place calls),
                 ``outbound_calls_not_enabled`` or ``voice_not_enabled``.
 
         Example:
@@ -129,6 +134,7 @@ class CallsResource:
         direction: Optional[EnumLike] = None,
         kind: Optional[EnumLike] = None,
         agent_id: Optional[str] = None,
+        agent_kind: Optional[EnumLike] = None,
         to: Optional[str] = None,
         from_: Optional[str] = None,
     ) -> CallListResponse:
@@ -145,6 +151,10 @@ class CallsResource:
             direction: ``inbound`` or ``outbound``.
             kind: ``pstn`` or ``internal``.
             agent_id: Only calls handled by this agent.
+            agent_kind: Only calls answered by this kind of agent:
+                ``sendly``, ``custom_llm``, ``sip`` or ``websocket`` (see
+                :class:`~sendly.types.VoiceAgentKind`). Calls from before
+                agent kinds existed count as ``sendly``.
             to: Exact E.164 match on the called number.
             from_: Exact E.164 match on the calling number.
 
@@ -155,7 +165,9 @@ class CallsResource:
             >>> if page.pagination.has_more:
             ...     page = client.calls.list(status='completed', limit=20, offset=20)
         """
-        params = _list_params(limit, offset, status, direction, kind, agent_id, to, from_)
+        params = _list_params(
+            limit, offset, status, direction, kind, agent_id, agent_kind, to, from_
+        )
         data = self._http.request(
             method="GET", path="/calls", params=params if params else None
         )
@@ -193,6 +205,62 @@ class CallsResource:
             method="POST",
             path=f"/calls/{quote(id, safe='')}/hangup",
             body={},
+            idempotency_key=idempotency_key,
+        )
+        return _parse(Call, data)
+
+    def transfer(
+        self,
+        id: str,
+        to: Optional[str] = None,
+        *,
+        idempotency_key: Optional[str] = None,
+    ) -> Call:
+        """Transfer the caller on an incoming phone call to another number.
+        Requires the ``calls:write`` scope and a live API key.
+
+        Works whatever kind of agent is on the call. Returns at once with
+        ``transfer.status`` ``pending``; the outcome shows on :meth:`get`
+        (``transfer.status``) and, once the caller is handed over, the call
+        ends ``completed`` with ``hangup_class`` ``transferred`` (also in the
+        ``call.completed`` webhook). A failed transfer leaves the caller on
+        the call, with ``transfer.failure_reason`` saying why.
+
+        Args:
+            id: Call identifier.
+            to: Number to transfer the caller to, in E.164 format: US or
+                Canadian, not premium-rate, not the number the caller dialled
+                and not a number the agent answers. Left out (not sent), the
+                agent's transfer number (``tools.transfer_to``) is used. Any
+                other number needs calling out switched on for the workspace.
+            idempotency_key: Optional key sent as the Idempotency-Key header;
+                generated automatically when omitted.
+
+        Raises:
+            ValidationError: ``id`` is empty, or the API answered
+                ``invalid_request`` (``to`` is malformed, outside the US and
+                Canada, premium-rate, the dialled number or a number the agent
+                answers).
+            InsufficientCreditsError: The workspace has no credits left.
+            SendlyError: With ``code`` ``transfer_to_required`` (HTTP 400, no
+                ``to`` and the agent has no transfer number),
+                ``outbound_not_enabled`` (HTTP 403, ``to`` is not the agent's
+                transfer number and calling out is not switched on),
+                ``call_not_found`` (HTTP 404), ``call_not_active`` (HTTP 409,
+                the call is not in progress), ``call_not_transferable``
+                (HTTP 409, not an incoming phone call), ``transfer_in_progress``
+                (HTTP 409, a transfer is already under way, or the call has had
+                3 transfer attempts) or ``voice_internal_error`` (HTTP 500).
+
+        Example:
+            >>> call = client.calls.transfer(call.id, to='+15555550142')
+            >>> print(call.transfer.status)  # 'pending'
+        """
+        _require(id, "id")
+        data = self._http.request(
+            method="POST",
+            path=f"/calls/{quote(id, safe='')}/transfer",
+            body=_transfer_body(to),
             idempotency_key=idempotency_key,
         )
         return _parse(Call, data)
@@ -254,11 +322,14 @@ class AsyncCallsResource:
         direction: Optional[EnumLike] = None,
         kind: Optional[EnumLike] = None,
         agent_id: Optional[str] = None,
+        agent_kind: Optional[EnumLike] = None,
         to: Optional[str] = None,
         from_: Optional[str] = None,
     ) -> CallListResponse:
         """List calls, newest first. See :meth:`CallsResource.list`."""
-        params = _list_params(limit, offset, status, direction, kind, agent_id, to, from_)
+        params = _list_params(
+            limit, offset, status, direction, kind, agent_id, agent_kind, to, from_
+        )
         data = await self._http.request(
             method="GET", path="/calls", params=params if params else None
         )
@@ -277,6 +348,24 @@ class AsyncCallsResource:
             method="POST",
             path=f"/calls/{quote(id, safe='')}/hangup",
             body={},
+            idempotency_key=idempotency_key,
+        )
+        return _parse(Call, data)
+
+    async def transfer(
+        self,
+        id: str,
+        to: Optional[str] = None,
+        *,
+        idempotency_key: Optional[str] = None,
+    ) -> Call:
+        """Transfer the caller on an incoming phone call to another number.
+        See :meth:`CallsResource.transfer`."""
+        _require(id, "id")
+        data = await self._http.request(
+            method="POST",
+            path=f"/calls/{quote(id, safe='')}/transfer",
+            body=_transfer_body(to),
             idempotency_key=idempotency_key,
         )
         return _parse(Call, data)
@@ -323,6 +412,13 @@ def _create_body(
     return body
 
 
+def _transfer_body(to: Optional[str]) -> Dict[str, Any]:
+    body: Dict[str, Any] = {}
+    if to is not None:
+        body["to"] = to
+    return body
+
+
 def _list_params(
     limit: Optional[int],
     offset: Optional[int],
@@ -330,6 +426,7 @@ def _list_params(
     direction: Optional[EnumLike],
     kind: Optional[EnumLike],
     agent_id: Optional[str],
+    agent_kind: Optional[EnumLike],
     to: Optional[str],
     from_: Optional[str],
 ) -> Dict[str, Any]:
@@ -341,6 +438,7 @@ def _list_params(
         "direction": _value(direction),
         "kind": _value(kind),
         "agentId": agent_id,
+        "agentKind": _value(agent_kind),
         "to": to,
         "from": from_,
     }
