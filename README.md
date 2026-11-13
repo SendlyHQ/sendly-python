@@ -252,6 +252,17 @@ result = client.messages.list_scheduled(status='scheduled')
 for msg in result.data:
     print(f'{msg.id}: {msg.scheduled_at} ({msg.status.value})')
 
+# Label it with a time zone. The API stores it and returns it as sent
+# (default 'UTC'), but it does not change how scheduled_at is read, so give
+# scheduled_at an offset or 'Z'
+scheduled = client.messages.schedule(
+    to='+15551234567',
+    text='Your appointment is tomorrow!',
+    scheduled_at='2026-11-20T09:00:00-05:00',
+    timezone='America/New_York',
+)
+print(scheduled.timezone)  # 'America/New_York'
+
 # Get a specific scheduled message (ids are 'schd_...')
 msg = client.messages.get_scheduled('schd_xxx')
 
@@ -518,7 +529,10 @@ contents.
 Write methods that accept `idempotency_key` include `messages.send`,
 `messages.schedule`, `messages.send_batch`, `messages.send_group`,
 `calls.create`, `calls.hangup`, `calls.transfer`, every `voice.*` write but
-`voice.agents.test`, and every `rcs.brands` / `rcs.agents` write.
+`voice.agents.test`, every `rcs.brands` / `rcs.agents` write,
+`whatsapp.signup.create`, `whatsapp.templates.create`, and
+`short_codes.application.update` / `submit`. A `PUT` such as
+`short_codes.application.update` gets no automatic key, only one you pass.
 
 Full details: https://sendly.live/docs/idempotency
 
@@ -599,6 +613,12 @@ from datetime import datetime, timedelta, timezone
 # 24 hours and to statuses ['failed', 'cancelled']; max limit 10000. The
 # window from since to until can be at most 7 days.
 since = (datetime.now(timezone.utc) - timedelta(days=3)).isoformat()
+
+# See what a recovery would send first. Nothing is sent, and it works while
+# the circuit is open.
+preview = client.webhooks.recovery_preview('whk_xxx', since=since)
+print(preview.audit_failures.total, preview.missing_from_messages.total)
+
 client.webhooks.redeliver(
     'whk_xxx',
     since=since,
@@ -613,8 +633,9 @@ client.webhooks.redeliver(
 client.webhooks.backfill('whk_xxx', since=since)
 ```
 
-Both refuse with HTTP 409 while the circuit is open - call `reset_circuit()`
-first. Both return the raw JSON payload as a dict.
+`redeliver` and `backfill` refuse with HTTP 409 while the circuit is open - call
+`reset_circuit()` first. Both return the raw JSON payload as a dict.
+`recovery_preview` returns a `WebhookRecoveryPreview`.
 
 ### Verifying Webhook Signatures
 
@@ -758,6 +779,9 @@ print(result.pagination.total, result.pagination.has_more)
 for convo in result.data:
     print(convo.id, convo.phone_number, convo.unread_count)
 
+# Only conversations with a label, by label id
+vip = client.conversations.list(label='lbl_xxx')
+
 # Fetch one, optionally with its messages
 convo = client.conversations.get('conv_xxx', include_messages=True, message_limit=50)
 for msg in convo.messages.data:
@@ -780,7 +804,16 @@ client.conversations.remove_label('conv_xxx', 'lbl_a')   # returns None
 # A ready-made prompt context for an LLM
 ctx = client.conversations.get_context('conv_xxx', max_messages=20)
 print(ctx.context, ctx.token_estimate)
+
+# Two or three short replies to the newest inbound message. Nothing is sent.
+suggested = client.conversations.suggest_replies('conv_xxx')
+for reply in suggested.suggestions:
+    print(reply.tone, reply.text)
 ```
+
+`suggest_replies` returns an empty `suggestions` list when no reply could be
+written, and `disabled=True` with `reason='enterprise_policy'` when the
+workspace's enterprise account turned AI suggestions off.
 
 Messages in the thread carry their real `direction` (`inbound` or `outbound`),
 as `messages.get()` and `messages.list()` do - see
@@ -1373,7 +1406,9 @@ template = client.whatsapp.templates.create(
 # ...poll client.whatsapp.templates.list() until its status == 'APPROVED'
 # (a rejected template should be edited with templates.update() and resubmitted -
 # templates.delete() locks its name for ~30 days, and re-creating it inside
-# that window fails with template_name_locked)
+# that window fails with template_name_locked). In an update, footer='' and
+# header='' remove those parts and buttons=[] removes every button; a field
+# left as None keeps its saved value
 
 # 3. Send - free-form inside an open 24h window, template anytime. A closed
 # window reads open False with its past expires_at; None means no window on record
@@ -1812,24 +1847,60 @@ network rejects, `rejection_reason` does.
 
 ## Short Codes
 
-**This SDK has no short-code helpers.** There is no `client.short_codes`
-resource — provisioning, the carrier application and the lifecycle are handled
-in the dashboard, or over plain REST against the Sendly API with the same
-bearer token this client uses. Nothing in this package wraps those endpoints:
+A short code is a 5 or 6 digit US sender. Getting one is an application, not a
+purchase: you fill it in, Sendly reviews it, the carrier forms are signed,
+Sendly files it, and each carrier certifies the code separately. Reads need the
+`short_codes:read` scope and writes `short_codes:write`; until short codes are
+enabled for the account every call raises `SendlyError` with code
+`short_codes_not_enabled` (HTTP 404).
 
-| Method | Path | Scope |
-|--------|------|-------|
-| `GET` | `/api/v1/short_codes` | `short_codes:read` |
-| `POST` | `/api/v1/short_codes/requests` | `short_codes:write` |
-| `GET` | `/api/v1/short_codes/application` | `short_codes:read` |
-| `PUT` | `/api/v1/short_codes/application` | `short_codes:write` |
-| `POST` | `/api/v1/short_codes/application/preflight` | `short_codes:read` |
-| `POST` | `/api/v1/short_codes/application/submit` | `short_codes:write` |
+```python
+# Every application and code, newest first (drafts have short_code None)
+codes = client.short_codes.list().short_codes
+sendable = [c for c in codes if c.status == 'active']
 
-What the SDK *does* give you is the webhook side: `WebhookEventType` carries
-`short_code.action_required`, `short_code.rejected`, `short_code.filed` and
-`short_code.live`. They are lifecycle events, so `event.data` is `None` and the
-payload is on `event.object`:
+# The application, with the documents it needs, the quote and billing
+view = client.short_codes.application.get()
+if not view.editable:
+    print(view.lock_message)
+
+# Save answers (a dict with snake_case or camelCase keys, or a
+# ShortCodeApplicationInput). Only the fields you set are sent; an explicit
+# None clears one. Fields Sendly owns come back in view.ignored_fields
+client.short_codes.application.update(
+    {
+        'use_case': 'Delivery alerts for Acme orders',
+        'message_frequency': '4 messages per month',
+    },
+    idempotency_key='acme-sc-save-1',
+)
+
+# Dry-run the rules a submit enforces; nothing is saved
+result = client.short_codes.application.check()
+for issue in result.issues:
+    print(issue.path, issue.message)
+
+# Submit for review. This charges the one-time $999 setup fee to the
+# workspace's card, so accept_terms=True is required. Submitting again while
+# it is in review returns already_submitted and charges nothing
+result = client.short_codes.application.submit(
+    accept_terms=True, idempotency_key='acme-sc-submit'
+)
+print(result.application.review_status)  # 'awaiting_review'
+print(result.payment.charged if result.payment else None)
+```
+
+`submit()` raises `verification_required` (403) until the business is
+verified (the answers sent are saved anyway), `short_code_invalid_application`
+(422) with an `errors` list naming every field, and `payment_method_required`,
+`payment_failed` or `payment_requires_authentication` (402) when the fee can't
+be charged. Starting a bare request with `POST /api/v1/short_codes/requests`
+has no helper; use the application instead.
+
+The webhook side: `WebhookEventType` carries `short_code.action_required`,
+`short_code.rejected`, `short_code.filed` and `short_code.live`. They are
+lifecycle events, so `event.data` is `None` and the payload is on
+`event.object`:
 
 ```python
 if event.type.startswith('short_code.'):
@@ -2404,7 +2475,7 @@ Generator over every matching message, paging automatically.
 
 Get a specific message by ID (UUID, `msg_…` or `schd_…`).
 
-#### `schedule(to, text, scheduled_at, from_=None, message_type=None, metadata=None, idempotency_key=None) -> ScheduledMessage`
+#### `schedule(to, text, scheduled_at, from_=None, message_type=None, metadata=None, idempotency_key=None, timezone=None) -> ScheduledMessage`
 
 #### `list_scheduled(limit=None, offset=None, status=None) -> ScheduledMessageListResponse`
 
@@ -2538,6 +2609,28 @@ Submit the agent and its brand for review by Sendly, then the carrier network. `
 
 Ask for the launch review once the agent is in `testing` and has been tried on an invited device.
 
+### `client.short_codes`
+
+#### `list() -> ShortCodeListResponse`
+
+Every short code application and code of the workspace, newest first, each with its `billing`.
+
+#### `application.get() -> ShortCodeApplicationView`
+
+The application, whether it is still editable (`lock_message` says why not), the documents it needs, the `quote`, `billing`, `verification` and each carrier's certification.
+
+#### `application.update(application, *, idempotency_key=None) -> ShortCodeApplicationView`
+
+Save answers, creating the application on the first call. Fields Sendly owns come back in `ignored_fields`.
+
+#### `application.check(application=None) -> ShortCodePreflight`
+
+Check the saved application, with any unsaved answers laid over it, against the submit rules. Saves nothing.
+
+#### `application.submit(application=None, *, accept_terms=None, idempotency_key=None) -> ShortCodeApplicationView`
+
+Submit for review, charging the one-time $999 setup fee; needs `accept_terms=True`.
+
 ### `client.calls`
 
 #### `create(to, agent_id, *, from_=None, context=None, metadata=None, idempotency_key=None) -> Call`
@@ -2663,6 +2756,21 @@ print(result.max_workspaces, result.workspaces_used)
 for ws in result.workspaces:
     print(f"{ws.name}: {ws.verification_status}")
 
+# Filter, sort and page (limit up to 100); pagination says what's left
+page = client.enterprise.workspaces.list(
+    search="acme", verification="unverified", sort="credits_desc",
+    tags=["tag_xxx"], limit=20, page=2,
+)
+print(page.pagination.total, page.pagination.has_more)
+
+# Totals over every workspace, whatever the filters
+print(page.summary.total_credits, page.summary.verification_breakdown.pending)
+for waiting in page.summary.pending_verifications:
+    print(waiting.id, waiting.name)
+
+# Every workspace's id, name and balance, unfiltered and unpaged
+compact = client.enterprise.workspaces.list(compact=True)
+
 detail = client.enterprise.workspaces.get("ws_xxx")
 print(detail.verification_status, detail.verification_type, detail.toll_free_number)
 print(detail.business_name, detail.credit_balance, detail.key_count, detail.created_at)
@@ -2698,7 +2806,12 @@ client.enterprise.workspaces.inherit_verification(
 )
 client.enterprise.workspaces.get_verification("ws_xxx")
 client.enterprise.upload_verification_document("CP-575.pdf", workspace_id="ws_xxx")
+# The type is guessed from the extension; pass content_type for a file without one
+client.enterprise.upload_verification_document("scan", content_type="image/png")
 ```
+
+The API takes PNG, JPEG, GIF and WEBP images and PDFs, up to 10 MB, and refuses
+any other content type.
 
 `submit_verification()` takes a dict or the API's camelCase keyword arguments,
 and `resubmit_verification()` takes the keyword arguments only; both drop

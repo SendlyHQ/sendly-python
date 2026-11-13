@@ -12,6 +12,7 @@ from .media import AsyncMediaResource, MediaResource
 from .messages import AsyncMessagesResource, MessagesResource
 from .numbers import AsyncNumbersResource, NumbersResource
 from .rules import AsyncRulesResource, RulesResource
+from .short_codes import AsyncShortCodesResource, ShortCodesResource
 from .templates import AsyncTemplatesResource, TemplatesResource
 from .tendlc import AsyncTenDlcResource, TenDlcResource
 from .verify import AsyncVerifyResource, VerifyResource
@@ -49,6 +50,8 @@ __all__ = [
     "AsyncTemplatesResource",
     "RulesResource",
     "AsyncRulesResource",
+    "ShortCodesResource",
+    "AsyncShortCodesResource",
     "TenDlcResource",
     "AsyncTenDlcResource",
     "WhatsAppResource",

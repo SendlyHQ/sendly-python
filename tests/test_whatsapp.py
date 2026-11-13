@@ -572,6 +572,38 @@ class TestTemplatesUpdate:
 
         client.close()
 
+    def test_update_template_clears_footer_header_and_buttons(
+        self, api_key, mock_template, httpx_mock: HTTPXMock
+    ):
+        client = Sendly(api_key)
+        httpx_mock.add_response(
+            url="https://sendly.live/api/v1/whatsapp/templates/wat_123",
+            method="PATCH",
+            json=mock_template,
+        )
+
+        client.whatsapp.templates.update("wat_123", footer="", header="", buttons=[])
+
+        payload = json.loads(httpx_mock.get_request().read().decode())
+        assert payload == {"footer": "", "header": "", "buttons": []}
+        client.close()
+
+    async def test_async_update_template_clears_the_footer(
+        self, api_key, mock_template, httpx_mock: HTTPXMock
+    ):
+        client = AsyncSendly(api_key)
+        httpx_mock.add_response(
+            url="https://sendly.live/api/v1/whatsapp/templates/wat_123",
+            method="PATCH",
+            json=mock_template,
+        )
+
+        await client.whatsapp.templates.update("wat_123", footer="", buttons=[])
+
+        payload = json.loads(httpx_mock.get_request().read().decode())
+        assert payload == {"footer": "", "buttons": []}
+        await client.close()
+
     def test_update_template_requires_id(self, api_key):
         client = Sendly(api_key)
 
@@ -1234,3 +1266,124 @@ class TestMessageFallbackFields:
         assert message.batch_id == "batch_1"
         assert message.media_urls == ["https://example.com/a.png"]
         assert message.fallback is None
+
+
+class TestWhatsAppIdempotencyKey:
+    def test_signup_create_sends_the_key(
+        self, api_key, mock_signup_session, httpx_mock: HTTPXMock
+    ):
+        client = Sendly(api_key)
+        httpx_mock.add_response(
+            url="https://sendly.live/api/v1/whatsapp/signup",
+            method="POST",
+            status_code=201,
+            json=mock_signup_session,
+        )
+
+        client.whatsapp.signup.create("+15559876543", idempotency_key="connect-4821")
+
+        assert httpx_mock.get_request().headers["Idempotency-Key"] == "connect-4821"
+        client.close()
+
+    def test_signup_add_by_code_sends_the_key(
+        self, api_key, mock_signup, httpx_mock: HTTPXMock
+    ):
+        client = Sendly(api_key)
+        httpx_mock.add_response(
+            url="https://sendly.live/api/v1/whatsapp/signup",
+            method="POST",
+            status_code=201,
+            json={**mock_signup, "status": "verifying"},
+        )
+
+        signup = client.whatsapp.signup.create(
+            "+15559876543",
+            business_account_id="1122334455667788",
+            idempotency_key="add-4821",
+        )
+
+        assert isinstance(signup, WhatsAppSignup)
+        request = httpx_mock.get_request()
+        assert request.headers["Idempotency-Key"] == "add-4821"
+        assert "idempotency_key" not in json.loads(request.read().decode())
+        client.close()
+
+    def test_signup_create_generates_a_key_when_omitted(
+        self, api_key, mock_signup_session, httpx_mock: HTTPXMock
+    ):
+        client = Sendly(api_key)
+        httpx_mock.add_response(
+            url="https://sendly.live/api/v1/whatsapp/signup",
+            method="POST",
+            status_code=201,
+            json=mock_signup_session,
+        )
+
+        client.whatsapp.signup.create("+15559876543")
+
+        assert httpx_mock.get_request().headers["Idempotency-Key"]
+        client.close()
+
+    def test_template_create_sends_the_key(
+        self, api_key, mock_template, httpx_mock: HTTPXMock
+    ):
+        client = Sendly(api_key)
+        httpx_mock.add_response(
+            url="https://sendly.live/api/v1/whatsapp/templates",
+            method="POST",
+            status_code=201,
+            json=mock_template,
+        )
+
+        client.whatsapp.templates.create(
+            sender="+15559876543",
+            name="order_shipped",
+            language="en_US",
+            category="UTILITY",
+            body="Your order has shipped",
+            idempotency_key="tpl-order-shipped",
+        )
+
+        request = httpx_mock.get_request()
+        assert request.headers["Idempotency-Key"] == "tpl-order-shipped"
+        assert "idempotency_key" not in json.loads(request.read().decode())
+        client.close()
+
+    async def test_async_signup_create_sends_the_key(
+        self, api_key, mock_signup_session, httpx_mock: HTTPXMock
+    ):
+        client = AsyncSendly(api_key)
+        httpx_mock.add_response(
+            url="https://sendly.live/api/v1/whatsapp/signup",
+            method="POST",
+            status_code=201,
+            json=mock_signup_session,
+        )
+
+        await client.whatsapp.signup.create("+15559876543", idempotency_key="connect-4821")
+
+        assert httpx_mock.get_request().headers["Idempotency-Key"] == "connect-4821"
+        await client.close()
+
+    async def test_async_template_create_sends_the_key(
+        self, api_key, mock_template, httpx_mock: HTTPXMock
+    ):
+        client = AsyncSendly(api_key)
+        httpx_mock.add_response(
+            url="https://sendly.live/api/v1/whatsapp/templates",
+            method="POST",
+            status_code=201,
+            json=mock_template,
+        )
+
+        await client.whatsapp.templates.create(
+            sender="+15559876543",
+            name="order_shipped",
+            language="en_US",
+            category="UTILITY",
+            body="Your order has shipped",
+            idempotency_key="tpl-order-shipped",
+        )
+
+        assert httpx_mock.get_request().headers["Idempotency-Key"] == "tpl-order-shipped"
+        await client.close()

@@ -77,7 +77,9 @@ class WhatsAppSignupResource:
         self._http = http
 
     @overload
-    def create(self, phone_number: str) -> WhatsAppSignupSession: ...
+    def create(
+        self, phone_number: str, *, idempotency_key: Optional[str] = None
+    ) -> WhatsAppSignupSession: ...
 
     @overload
     def create(
@@ -87,6 +89,7 @@ class WhatsAppSignupResource:
         business_account_id: str,
         verification_method: Optional[str] = None,
         display_name: Optional[str] = None,
+        idempotency_key: Optional[str] = None,
     ) -> WhatsAppSignup: ...
 
     def create(
@@ -96,6 +99,7 @@ class WhatsAppSignupResource:
         business_account_id: Optional[str] = None,
         verification_method: Optional[str] = None,
         display_name: Optional[str] = None,
+        idempotency_key: Optional[str] = None,
     ) -> Union[WhatsAppSignupSession, WhatsAppSignup]:
         """Start connecting a number to WhatsApp.
 
@@ -149,6 +153,12 @@ class WhatsAppSignupResource:
                 characters); only with ``business_account_id``. Defaults to
                 the account's existing sender display name, else its
                 business name.
+            idempotency_key: Optional key (1-255 printable ASCII characters)
+                sent as the Idempotency-Key header. Repeating the call with
+                the same key within 24 hours returns the original signup
+                instead of starting, and charging for, another. When omitted,
+                a unique key is generated automatically and reused across
+                retry attempts.
 
         Example:
             >>> senders = client.whatsapp.senders.list().senders
@@ -200,6 +210,7 @@ class WhatsAppSignupResource:
             path="/whatsapp/signup",
             body=body,
             retry_unsent_only=business_account_id is not None,
+            idempotency_key=idempotency_key,
         )
         try:
             if business_account_id is None:
@@ -647,6 +658,7 @@ class WhatsAppTemplatesResource:
         header: Optional[str] = None,
         buttons: Optional[List[Dict[str, Any]]] = None,
         examples: Optional[Dict[str, str]] = None,
+        idempotency_key: Optional[str] = None,
     ) -> WhatsAppTemplate:
         """Create a template and submit it to Meta for review.
 
@@ -680,6 +692,11 @@ class WhatsAppTemplatesResource:
             examples: Example values for body placeholders, keyed by
                 placeholder number: ``{'1': 'Acme Inc', '2': '#4821'}``.
                 Required when the body has variables.
+            idempotency_key: Optional key (1-255 printable ASCII characters)
+                sent as the Idempotency-Key header. Repeating the call with
+                the same key within 24 hours returns the original template
+                instead of submitting another. When omitted, a unique key is
+                generated automatically and reused across retry attempts.
 
         Raises:
             NotFoundError: ``whatsapp_sender_not_connected`` (404) when the
@@ -697,7 +714,12 @@ class WhatsAppTemplatesResource:
         payload = _create_template_body(
             sender, name, language, category, body, footer, header, buttons, examples
         )
-        data = self._http.request(method="POST", path="/whatsapp/templates", body=payload)
+        data = self._http.request(
+            method="POST",
+            path="/whatsapp/templates",
+            body=payload,
+            idempotency_key=idempotency_key,
+        )
         try:
             return WhatsAppTemplate(**data)
         except PydanticValidationError as e:
@@ -726,11 +748,14 @@ class WhatsAppTemplatesResource:
         Args:
             id: The template's id.
             body: Replacement body text.
-            footer: Replacement footer.
+            footer: Replacement footer; ``""`` removes it.
             header: Replacement text header; it can't contain ``{{n}}``
                 variables (``template_header_variable_unsupported``).
-            buttons: Replacement buttons.
+                ``""`` removes it.
+            buttons: Replacement buttons; ``[]`` removes them all.
             examples: Replacement example values for body placeholders.
+
+        A field left as None keeps its saved value.
         """
         if not id:
             raise ValidationError("A template 'id' is required")
@@ -833,7 +858,9 @@ class AsyncWhatsAppSignupResource:
         self._http = http
 
     @overload
-    async def create(self, phone_number: str) -> WhatsAppSignupSession: ...
+    async def create(
+        self, phone_number: str, *, idempotency_key: Optional[str] = None
+    ) -> WhatsAppSignupSession: ...
 
     @overload
     async def create(
@@ -843,6 +870,7 @@ class AsyncWhatsAppSignupResource:
         business_account_id: str,
         verification_method: Optional[str] = None,
         display_name: Optional[str] = None,
+        idempotency_key: Optional[str] = None,
     ) -> WhatsAppSignup: ...
 
     async def create(
@@ -852,6 +880,7 @@ class AsyncWhatsAppSignupResource:
         business_account_id: Optional[str] = None,
         verification_method: Optional[str] = None,
         display_name: Optional[str] = None,
+        idempotency_key: Optional[str] = None,
     ) -> Union[WhatsAppSignupSession, WhatsAppSignup]:
         """Start connecting a number to WhatsApp, or add one to a connected
         account by code. See :meth:`WhatsAppSignupResource.create`."""
@@ -862,6 +891,7 @@ class AsyncWhatsAppSignupResource:
             path="/whatsapp/signup",
             body=body,
             retry_unsent_only=business_account_id is not None,
+            idempotency_key=idempotency_key,
         )
         try:
             if business_account_id is None:
@@ -1082,6 +1112,7 @@ class AsyncWhatsAppTemplatesResource:
         header: Optional[str] = None,
         buttons: Optional[List[Dict[str, Any]]] = None,
         examples: Optional[Dict[str, str]] = None,
+        idempotency_key: Optional[str] = None,
     ) -> WhatsAppTemplate:
         """Create a template and submit it to Meta for review.
         See :meth:`WhatsAppTemplatesResource.create`."""
@@ -1090,7 +1121,10 @@ class AsyncWhatsAppTemplatesResource:
             sender, name, language, category, body, footer, header, buttons, examples
         )
         data = await self._http.request(
-            method="POST", path="/whatsapp/templates", body=payload
+            method="POST",
+            path="/whatsapp/templates",
+            body=payload,
+            idempotency_key=idempotency_key,
         )
         try:
             return WhatsAppTemplate(**data)

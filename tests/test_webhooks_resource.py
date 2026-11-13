@@ -4,7 +4,7 @@ from pytest_httpx import HTTPXMock
 from sendly import AsyncSendly, Sendly
 from sendly.errors import SendlyError
 from sendly.resources.webhooks import AsyncWebhooksResource, WebhooksResource
-from sendly.types import DeliveryStatus, WebhookDelivery
+from sendly.types import DeliveryStatus, WebhookDelivery, WebhookRecoveryPreview
 
 BASE = "https://sendly.live/api/v1"
 
@@ -361,3 +361,162 @@ class TestOlderResponseShapes:
         assert rotation.webhook.is_active is True
         assert rotation.webhook.created_at == "2026-01-01T00:00:00.000Z"
         client.close()
+
+
+RECOVERY_PREVIEW_BODY = {
+    "circuitState": "open",
+    "circuitOpenedAt": "2026-01-01T08:00:00.000Z",
+    "failureCount": 12,
+    "auditFailures": {
+        "total": 3,
+        "byStatus": {"failed": 2, "cancelled": 1},
+        "byEventType": {"message.delivered": 2, "message.opt_out": 1},
+    },
+    "missingFromMessages": {"total": 4, "byEventType": {"message.sent": 4}},
+    "histogram": [{"bucket": "2026-01-01T08:00:00.000Z", "missing": 4, "failed": 3}],
+    "samples": [
+        {
+            "id": "msg_1",
+            "toMasked": "+1555***4567",
+            "eventType": "message.delivered",
+            "occurredAt": "2026-01-01T08:30:00.000Z",
+        }
+    ],
+    "windowSuggestion": {
+        "since": "2026-01-01T08:00:00.000Z",
+        "until": "2026-01-01T10:00:00.000Z",
+    },
+    "since": "2025-12-31T10:00:00.000Z",
+    "until": "2026-01-01T10:00:00.000Z",
+}
+
+
+class TestRecoveryPreview:
+    def test_sends_the_window_and_reads_the_preview(self, api_key, httpx_mock: HTTPXMock):
+        client = Sendly(api_key)
+        httpx_mock.add_response(method="GET", json=RECOVERY_PREVIEW_BODY)
+
+        preview = client.webhooks.recovery_preview(
+            "whk_1",
+            since="2025-12-31T10:00:00.000Z",
+            until="2026-01-01T10:00:00.000Z",
+            event_types=["message.delivered", "message.failed"],
+        )
+
+        request = httpx_mock.get_request()
+        assert request.method == "GET"
+        assert request.url.path == "/api/v1/webhooks/whk_1/recovery-preview"
+        assert request.url.params["since"] == "2025-12-31T10:00:00.000Z"
+        assert request.url.params["until"] == "2026-01-01T10:00:00.000Z"
+        assert request.url.params["event_types"] == "message.delivered,message.failed"
+        assert isinstance(preview, WebhookRecoveryPreview)
+        assert preview.circuit_state == "open"
+        assert preview.circuit_opened_at == "2026-01-01T08:00:00.000Z"
+        assert preview.failure_count == 12
+        assert preview.audit_failures.by_status == {"failed": 2, "cancelled": 1}
+        assert preview.audit_failures.by_event_type["message.opt_out"] == 1
+        assert preview.missing_from_messages.total == 4
+        assert preview.histogram[0].missing == 4
+        assert preview.samples[0].to_masked == "+1555***4567"
+        assert preview.samples[0].occurred_at == "2026-01-01T08:30:00.000Z"
+        assert preview.window_suggestion is not None
+        assert preview.window_suggestion.since == "2026-01-01T08:00:00.000Z"
+        client.close()
+
+    def test_sends_no_query_without_options(self, api_key, httpx_mock: HTTPXMock):
+        client = Sendly(api_key)
+        httpx_mock.add_response(
+            url=f"{BASE}/webhooks/whk_1/recovery-preview",
+            method="GET",
+            json={**RECOVERY_PREVIEW_BODY, "circuitOpenedAt": None, "windowSuggestion": None},
+        )
+
+        preview = client.webhooks.recovery_preview("whk_1")
+
+        assert preview.circuit_opened_at is None
+        assert preview.window_suggestion is None
+        client.close()
+
+    @pytest.mark.asyncio
+    async def test_reads_the_preview_async(self, api_key, httpx_mock: HTTPXMock):
+        client = AsyncSendly(api_key)
+        httpx_mock.add_response(
+            url=f"{BASE}/webhooks/whk_1/recovery-preview?event_types=message.sent",
+            method="GET",
+            json=RECOVERY_PREVIEW_BODY,
+        )
+
+        preview = await client.webhooks.recovery_preview("whk_1", event_types=["message.sent"])
+
+        assert preview.missing_from_messages.by_event_type == {"message.sent": 4}
+        await client.close()
+
+    def test_rejects_an_id_that_is_not_whk_prefixed(self, api_key):
+        client = Sendly(api_key)
+        with pytest.raises(ValueError):
+            client.webhooks.recovery_preview("bad")
+        client.close()
+
+
+STORED_WEBHOOK = {
+    "id": "whk_placeholder1",
+    "url": "https://localhost/sendly-contract-capture",
+    "events": ["message.received"],
+    "description": "Contract capture",
+    "mode": "test",
+    "is_active": True,
+    "failure_count": 0,
+    "circuit_state": "closed",
+    "api_version": "2024-01",
+    "metadata": {"purpose": "contract-capture"},
+    "created_at": "2026-01-01T00:00:00.000Z",
+    "updated_at": "2026-01-01T00:00:00.000Z",
+    "total_deliveries": 0,
+    "successful_deliveries": 0,
+    "success_rate": 0,
+    "last_delivery_at": None,
+}
+
+
+class TestStoredMetadata:
+    def test_get_reads_object_metadata(self, api_key, httpx_mock: HTTPXMock):
+        client = Sendly(api_key)
+        httpx_mock.add_response(
+            url=f"{BASE}/webhooks/whk_placeholder1", method="GET", json=STORED_WEBHOOK
+        )
+
+        webhook = client.webhooks.get("whk_placeholder1")
+
+        assert webhook.metadata == {"purpose": "contract-capture"}
+        client.close()
+
+    @pytest.mark.parametrize("stored", [["a", 1], "note", 7, True, None])
+    def test_list_reads_metadata_that_is_not_an_object_as_empty(
+        self, api_key, httpx_mock: HTTPXMock, stored
+    ):
+        client = Sendly(api_key)
+        httpx_mock.add_response(
+            url=f"{BASE}/webhooks",
+            method="GET",
+            json=[{**STORED_WEBHOOK, "metadata": stored}],
+        )
+
+        webhooks = client.webhooks.list()
+
+        assert webhooks[0].id == "whk_placeholder1"
+        assert webhooks[0].metadata == {}
+        client.close()
+
+    @pytest.mark.asyncio
+    async def test_get_reads_array_metadata_as_empty_async(self, api_key, httpx_mock: HTTPXMock):
+        client = AsyncSendly(api_key)
+        httpx_mock.add_response(
+            url=f"{BASE}/webhooks/whk_placeholder1",
+            method="GET",
+            json={**STORED_WEBHOOK, "metadata": [1, 2]},
+        )
+
+        webhook = await client.webhooks.get("whk_placeholder1")
+
+        assert webhook.metadata == {}
+        await client.close()

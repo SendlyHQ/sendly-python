@@ -11,6 +11,7 @@ from ..types import (
     ConversationWithMessages,
     LabelListResponse,
     Message,
+    SuggestRepliesResponse,
 )
 from ..utils.http import AsyncHttpClient, HttpClient
 
@@ -24,7 +25,18 @@ class ConversationsResource:
         limit: Optional[int] = None,
         offset: Optional[int] = None,
         status: Optional[str] = None,
+        label: Optional[str] = None,
     ) -> ConversationListResponse:
+        """List conversations, most recent activity first.
+
+        Args:
+            limit: Page size.
+            offset: How many conversations to skip.
+            status: Only conversations with this status, such as ``active``
+                or ``closed``.
+            label: Only conversations with this label, by label id
+                (``lbl_...``).
+        """
         params: Dict[str, Any] = {}
         if limit is not None:
             params["limit"] = limit
@@ -32,6 +44,8 @@ class ConversationsResource:
             params["offset"] = offset
         if status is not None:
             params["status"] = status
+        if label is not None:
+            params["label"] = label
 
         data = self._http.request(
             method="GET",
@@ -226,6 +240,34 @@ class ConversationsResource:
                 status_code=200,
             ) from e
 
+    def suggest_replies(self, id: str) -> SuggestRepliesResponse:
+        """Suggest replies to the conversation's newest inbound message.
+
+        A language model writes two or three short replies, reading the
+        conversation's 10 newest messages. Nothing is sent.
+
+        Args:
+            id: Conversation ID
+
+        Returns:
+            The suggested replies. ``suggestions`` is empty when none could be
+            written, and ``disabled`` is True when the workspace's enterprise
+            account turned AI suggestions off.
+        """
+        data = self._http.request(
+            method="POST",
+            path=f"/conversations/{quote(id, safe='')}/suggest-replies",
+        )
+
+        try:
+            return SuggestRepliesResponse(**data)
+        except PydanticValidationError as e:
+            raise SendlyError(
+                message=f"Invalid API response format: {e}",
+                code="invalid_response",
+                status_code=200,
+            ) from e
+
 
 class AsyncConversationsResource:
     def __init__(self, http: AsyncHttpClient):
@@ -236,7 +278,18 @@ class AsyncConversationsResource:
         limit: Optional[int] = None,
         offset: Optional[int] = None,
         status: Optional[str] = None,
+        label: Optional[str] = None,
     ) -> ConversationListResponse:
+        """List conversations, most recent activity first.
+
+        Args:
+            limit: Page size.
+            offset: How many conversations to skip.
+            status: Only conversations with this status, such as ``active``
+                or ``closed``.
+            label: Only conversations with this label, by label id
+                (``lbl_...``).
+        """
         params: Dict[str, Any] = {}
         if limit is not None:
             params["limit"] = limit
@@ -244,6 +297,8 @@ class AsyncConversationsResource:
             params["offset"] = offset
         if status is not None:
             params["status"] = status
+        if label is not None:
+            params["label"] = label
 
         data = await self._http.request(
             method="GET",
@@ -431,6 +486,34 @@ class AsyncConversationsResource:
 
         try:
             return ConversationContext(**data)
+        except PydanticValidationError as e:
+            raise SendlyError(
+                message=f"Invalid API response format: {e}",
+                code="invalid_response",
+                status_code=200,
+            ) from e
+
+    async def suggest_replies(self, id: str) -> SuggestRepliesResponse:
+        """Suggest replies to the conversation's newest inbound message.
+
+        A language model writes two or three short replies, reading the
+        conversation's 10 newest messages. Nothing is sent.
+
+        Args:
+            id: Conversation ID
+
+        Returns:
+            The suggested replies. ``suggestions`` is empty when none could be
+            written, and ``disabled`` is True when the workspace's enterprise
+            account turned AI suggestions off.
+        """
+        data = await self._http.request(
+            method="POST",
+            path=f"/conversations/{quote(id, safe='')}/suggest-replies",
+        )
+
+        try:
+            return SuggestRepliesResponse(**data)
         except PydanticValidationError as e:
             raise SendlyError(
                 message=f"Invalid API response format: {e}",

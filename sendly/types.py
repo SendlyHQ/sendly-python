@@ -8,7 +8,7 @@ from datetime import datetime
 from enum import Enum
 from typing import Any, Dict, List, Literal, Optional, Union
 
-from pydantic import AliasChoices, BaseModel, ConfigDict, Field, model_validator
+from pydantic import AliasChoices, BaseModel, ConfigDict, Field, field_validator, model_validator
 
 # ============================================================================
 # Enums
@@ -421,6 +421,13 @@ class ScheduleMessageRequest(BaseModel):
         default=None,
         description="Custom JSON metadata to attach to the message (max 4KB)",
     )
+    timezone: Optional[str] = Field(
+        default=None,
+        description=(
+            "Stored with the message and returned as sent (default UTC). "
+            "It does not change how scheduled_at is read"
+        ),
+    )
 
     model_config = ConfigDict(populate_by_name=True)
 
@@ -434,6 +441,9 @@ class ScheduledMessage(BaseModel):
     text: str = Field(..., description="Message content")
     status: ScheduledMessageStatus = Field(..., description="Current status")
     scheduled_at: str = Field(..., alias="scheduledAt", description="When message is scheduled")
+    timezone: Optional[str] = Field(
+        default=None, description="The time zone the message was scheduled with, as sent"
+    )
     credits_reserved: int = Field(
         default=0, alias="creditsReserved", description="Credits reserved"
     )
@@ -1022,6 +1032,11 @@ class Webhook(BaseModel):
 
     model_config = ConfigDict(populate_by_name=True)
 
+    @field_validator("metadata", mode="before")
+    @classmethod
+    def _object_metadata(cls, value: Any) -> Any:
+        return value if isinstance(value, dict) else {}
+
 
 class WebhookCreatedResponse(Webhook):
     """Response when creating a webhook (includes secret once)"""
@@ -1151,6 +1166,96 @@ class WebhookSecretRotation(BaseModel):
     rotated_at: Optional[str] = Field(
         default=None, alias="rotatedAt", description="When the secret was rotated (ISO 8601)"
     )
+
+    model_config = ConfigDict(populate_by_name=True)
+
+
+class WebhookRecoveryAuditFailures(BaseModel):
+    """Failed and cancelled deliveries in the window: what redeliver would send"""
+
+    total: int = Field(..., description="How many deliveries")
+    by_status: Dict[str, int] = Field(
+        default_factory=dict, alias="byStatus", description="Counts by delivery status"
+    )
+    by_event_type: Dict[str, int] = Field(
+        default_factory=dict, alias="byEventType", description="Counts by event type"
+    )
+
+    model_config = ConfigDict(populate_by_name=True)
+
+
+class WebhookRecoveryMissing(BaseModel):
+    """Message events with no delivery in the window: what backfill would send"""
+
+    total: int = Field(..., description="How many events")
+    by_event_type: Dict[str, int] = Field(
+        default_factory=dict, alias="byEventType", description="Counts by event type"
+    )
+
+    model_config = ConfigDict(populate_by_name=True)
+
+
+class WebhookRecoveryHistogramBucket(BaseModel):
+    """One bucket of the recovery preview histogram"""
+
+    bucket: str = Field(..., description="The bucket's start (ISO 8601)")
+    missing: int = Field(..., description="Missing message events in the bucket")
+    failed: int = Field(..., description="Failed deliveries in the bucket")
+
+
+class WebhookRecoverySample(BaseModel):
+    """An affected event in a recovery preview"""
+
+    id: str = Field(..., description="The event's object id, such as a message id")
+    to_masked: str = Field(
+        ..., alias="toMasked", description="The recipient, masked, or *** when there is none"
+    )
+    event_type: str = Field(..., alias="eventType", description="The event type")
+    occurred_at: str = Field(
+        ..., alias="occurredAt", description="When the delivery or message was created"
+    )
+
+    model_config = ConfigDict(populate_by_name=True)
+
+
+class WebhookRecoveryWindow(BaseModel):
+    """The suggested outage window"""
+
+    since: str = Field(..., description="When the circuit opened")
+    until: str = Field(..., description="Now")
+
+
+class WebhookRecoveryPreview(BaseModel):
+    """What a webhook recovery would do for a window, without sending anything"""
+
+    circuit_state: Union[CircuitState, str] = Field(
+        ..., alias="circuitState", description="Circuit breaker state"
+    )
+    circuit_opened_at: Optional[str] = Field(
+        default=None, alias="circuitOpenedAt", description="When the circuit opened"
+    )
+    failure_count: int = Field(
+        ..., alias="failureCount", description="Failed deliveries in the current streak"
+    )
+    audit_failures: WebhookRecoveryAuditFailures = Field(
+        ..., alias="auditFailures", description="What redeliver would send"
+    )
+    missing_from_messages: WebhookRecoveryMissing = Field(
+        ..., alias="missingFromMessages", description="What backfill would send"
+    )
+    histogram: List[WebhookRecoveryHistogramBucket] = Field(
+        default_factory=list, description="The window in up to 24 equal buckets, oldest first"
+    )
+    samples: List[WebhookRecoverySample] = Field(
+        default_factory=list, description="Up to 5 affected events"
+    )
+    window_suggestion: Optional[WebhookRecoveryWindow] = Field(
+        default=None,
+        alias="windowSuggestion",
+        description="The outage window, when the circuit has an opening time",
+    )
+    since: str = Field(..., description="The window's start (ISO 8601)")
+    until: str = Field(..., description="The window's end (ISO 8601)")
 
     model_config = ConfigDict(populate_by_name=True)
 
@@ -1804,7 +1909,7 @@ class EnterpriseAccount(BaseModel):
 class EnterpriseWorkspace(BaseModel):
     id: str
     name: str
-    slug: str
+    slug: Optional[str] = None
     verification_status: Optional[str] = Field(default=None, alias="verificationStatus")
     verification_type: Optional[str] = Field(default=None, alias="verificationType")
     toll_free_number: Optional[str] = Field(default=None, alias="tollFreeNumber")
@@ -1813,7 +1918,11 @@ class EnterpriseWorkspace(BaseModel):
     messages_30d: int = Field(default=0, alias="messages30d")
     delivered_30d: int = Field(default=0, alias="delivered30d")
     failed_30d: int = Field(default=0, alias="failed30d")
-    created_at: str = Field(..., alias="createdAt")
+    created_at: Optional[str] = Field(
+        default=None,
+        alias="createdAt",
+        description="None on the compact list, which carries only id, name and credit_balance",
+    )
 
     model_config = ConfigDict(populate_by_name=True)
 
@@ -1856,10 +1965,75 @@ class EnterpriseWorkspaceDetail(BaseModel):
     model_config = ConfigDict(populate_by_name=True)
 
 
+class EnterpriseWorkspacePagination(BaseModel):
+    """Where a page of workspaces sits in the full list"""
+
+    total: int = Field(..., description="How many workspaces match, across every page")
+    limit: Optional[int] = Field(default=None, description="The page size used")
+    page: Optional[int] = Field(default=None, description="The page number, counted from 1")
+    total_pages: Optional[int] = Field(
+        default=None, alias="totalPages", description="How many pages there are"
+    )
+    has_more: bool = Field(
+        default=False, alias="hasMore", description="Whether a later page has items"
+    )
+
+    model_config = ConfigDict(populate_by_name=True)
+
+
+class EnterpriseWorkspacePendingVerification(BaseModel):
+    """A workspace whose verification is waiting"""
+
+    id: str
+    name: str
+
+    model_config = ConfigDict(populate_by_name=True)
+
+
+class EnterpriseWorkspaceVerificationBreakdown(BaseModel):
+    """Every workspace counted once by its verification status"""
+
+    verified: int = 0
+    pending: int = 0
+    submitted: int = Field(
+        default=0, description="Submitted, in progress, or waiting on the carrier"
+    )
+    rejected: int = 0
+    unverified: int = Field(
+        default=0, description="No verification, or one in any other state"
+    )
+
+    model_config = ConfigDict(populate_by_name=True)
+
+
+class EnterpriseWorkspacesSummary(BaseModel):
+    """Totals over every workspace, before filters and paging"""
+
+    total_credits: int = Field(
+        default=0, alias="totalCredits", description="The credit balance of every workspace"
+    )
+    pending_verifications: List[EnterpriseWorkspacePendingVerification] = Field(
+        default_factory=list,
+        alias="pendingVerifications",
+        description="Up to 10 workspaces whose verification is waiting",
+    )
+    verification_breakdown: Optional[EnterpriseWorkspaceVerificationBreakdown] = Field(
+        default=None, alias="verificationBreakdown"
+    )
+
+    model_config = ConfigDict(populate_by_name=True)
+
+
 class EnterpriseWorkspaceListResponse(BaseModel):
     workspaces: List[EnterpriseWorkspace] = Field(default_factory=list)
     max_workspaces: int = Field(..., alias="maxWorkspaces")
     workspaces_used: int = Field(..., alias="workspacesUsed")
+    pagination: Optional[EnterpriseWorkspacePagination] = Field(
+        default=None, description="None on the compact list, which is unpaged"
+    )
+    summary: Optional[EnterpriseWorkspacesSummary] = Field(
+        default=None, description="Totals over every workspace, whatever the filters"
+    )
 
     model_config = ConfigDict(populate_by_name=True)
 
@@ -2306,6 +2480,34 @@ class ConversationContext(BaseModel):
     conversation: ConversationContextInfo
     token_estimate: int = Field(..., alias="tokenEstimate")
     business: Optional[ConversationContextBusiness] = None
+
+    model_config = ConfigDict(populate_by_name=True)
+
+
+class SuggestedReply(BaseModel):
+    """One reply suggested for a conversation"""
+
+    text: str = Field(..., description="The suggested reply, up to 160 characters")
+    tone: str = Field(..., description="professional, friendly or concise")
+
+
+class SuggestRepliesResponse(BaseModel):
+    """Replies suggested for a conversation's newest inbound message"""
+
+    suggestions: List[SuggestedReply] = Field(default_factory=list)
+    based_on_message_id: Optional[str] = Field(
+        default=None,
+        alias="basedOnMessageId",
+        description="The inbound message the replies answer",
+    )
+    model: Optional[str] = Field(default=None, description="The model that wrote the replies")
+    disabled: Optional[bool] = Field(
+        default=None,
+        description="True when the workspace's enterprise account turned AI suggestions off",
+    )
+    reason: Optional[str] = Field(
+        default=None, description="Why suggestions are off: enterprise_policy"
+    )
 
     model_config = ConfigDict(populate_by_name=True)
 
@@ -4927,3 +5129,588 @@ class TestVoiceAgentRequest(BaseModel):
     )
 
     model_config = ConfigDict(populate_by_name=True)
+
+
+# ==================== Short codes ====================
+
+
+class ShortCodeIssue(BaseModel):
+    """A compliance problem with a short code application, by field"""
+
+    path: str = Field(
+        ..., description="The field the issue is about, such as helpResponse or documents.loa"
+    )
+    message: str = Field(..., description="What to change, for people")
+
+    model_config = ConfigDict(populate_by_name=True)
+
+
+class ShortCodeDocument(BaseModel):
+    """A carrier form the application needs, and where it stands"""
+
+    kind: str = Field(
+        ...,
+        description=(
+            "order_brief | brand_registration | content_provider_registration | "
+            "migration_letter | loa. More values may be added"
+        ),
+    )
+    template_ready: bool = Field(
+        default=False,
+        alias="templateReady",
+        description="Whether Sendly has prepared the form for signing",
+    )
+    signed_at: Optional[str] = Field(
+        default=None, alias="signedAt", description="When the form was signed"
+    )
+    signed_by_name: Optional[str] = Field(
+        default=None, alias="signedByName", description="Who signed it"
+    )
+    awaiting_signature: bool = Field(
+        default=False,
+        alias="awaitingSignature",
+        description="Whether a signing link is out and has not expired",
+    )
+
+    model_config = ConfigDict(populate_by_name=True)
+
+
+class ShortCodeApplication(BaseModel):
+    """The short code application a workspace is filling in, or has filed.
+
+    With no application yet this is the empty shape: ``id`` is None, the
+    choices show their defaults, and every answer is None.
+    """
+
+    id: Optional[str] = Field(default=None, description="None before the first save")
+    short_code: Optional[str] = Field(
+        default=None,
+        alias="shortCode",
+        description="The assigned code's digits. None until Sendly assigns one",
+    )
+    country_code: str = Field(default="US", alias="countryCode", description="Always US today")
+    status: str = Field(
+        ...,
+        description=(
+            "requested | provisioning | parked | active | suspended | cancelled. "
+            "Only active can send. More values may be added"
+        ),
+    )
+    review_status: str = Field(
+        ...,
+        alias="reviewStatus",
+        description=(
+            "draft | awaiting_review | changes_requested | approved_for_filing | "
+            "filed | rejected. More values may be added"
+        ),
+    )
+    review_note: Optional[str] = Field(
+        default=None, alias="reviewNote", description="Sendly's note from the review"
+    )
+    order_type: str = Field(default="new", alias="orderType", description="new | migration")
+    code_type: str = Field(default="random", alias="codeType", description="random | vanity")
+    content_provider_same_as_brand: bool = Field(
+        default=True,
+        alias="contentProviderSameAsBrand",
+        description="Whether the content provider is the brand itself",
+    )
+    sample_messages: List[str] = Field(
+        default_factory=list, alias="sampleMessages", description="Example messages"
+    )
+    use_case: Optional[str] = Field(default=None, alias="useCase")
+    opt_in_flow: Optional[str] = Field(default=None, alias="optInFlow")
+    opt_in_confirmation: Optional[str] = Field(default=None, alias="optInConfirmation")
+    help_response: Optional[str] = Field(default=None, alias="helpResponse")
+    stop_confirmation: Optional[str] = Field(default=None, alias="stopConfirmation")
+    message_frequency: Optional[str] = Field(default=None, alias="messageFrequency")
+    campaign_keyword: Optional[str] = Field(default=None, alias="campaignKeyword")
+    expected_monthly_volume: Optional[str] = Field(default=None, alias="expectedMonthlyVolume")
+    expected_daily_volume: Optional[str] = Field(default=None, alias="expectedDailyVolume")
+    privacy_policy_url: Optional[str] = Field(default=None, alias="privacyPolicyUrl")
+    terms_url: Optional[str] = Field(default=None, alias="termsUrl")
+    requested_digits: Optional[str] = Field(default=None, alias="requestedDigits")
+    losing_provider: Optional[str] = Field(default=None, alias="losingProvider")
+    brand_contact_name: Optional[str] = Field(default=None, alias="brandContactName")
+    brand_contact_email: Optional[str] = Field(default=None, alias="brandContactEmail")
+    brand_contact_phone: Optional[str] = Field(default=None, alias="brandContactPhone")
+    content_provider_legal_name: Optional[str] = Field(
+        default=None, alias="contentProviderLegalName"
+    )
+    content_provider_ein: Optional[str] = Field(default=None, alias="contentProviderEin")
+    content_provider_contact_name: Optional[str] = Field(
+        default=None, alias="contentProviderContactName"
+    )
+    content_provider_contact_email: Optional[str] = Field(
+        default=None, alias="contentProviderContactEmail"
+    )
+    content_provider_contact_phone: Optional[str] = Field(
+        default=None, alias="contentProviderContactPhone"
+    )
+    brand_registration_status: Optional[str] = Field(
+        default=None,
+        alias="brandRegistrationStatus",
+        description=(
+            "not_started | submitted | awaiting_email_verification | vetting | "
+            "registered | rejected"
+        ),
+    )
+    content_provider_registration_status: Optional[str] = Field(
+        default=None, alias="contentProviderRegistrationStatus"
+    )
+    submitted_at: Optional[str] = Field(default=None, alias="submittedAt")
+    reviewed_at: Optional[str] = Field(
+        default=None, alias="reviewedAt", description="When Sendly finished reviewing it"
+    )
+    filed_at: Optional[str] = Field(default=None, alias="filedAt")
+    activated_at: Optional[str] = Field(default=None, alias="activatedAt")
+    registry_revetting_due_at: Optional[str] = Field(
+        default=None,
+        alias="registryRevettingDueAt",
+        description="When the registry registration is next due to be re-vetted",
+    )
+    created_at: Optional[str] = Field(default=None, alias="createdAt")
+    updated_at: Optional[str] = Field(default=None, alias="updatedAt")
+
+    model_config = ConfigDict(populate_by_name=True)
+
+
+class ShortCodePrefillAddress(BaseModel):
+    """The business address from the workspace's details. Only known parts"""
+
+    line1: Optional[str] = None
+    line2: Optional[str] = None
+    city: Optional[str] = None
+    state: Optional[str] = None
+    postal_code: Optional[str] = Field(default=None, alias="postalCode")
+    country_code: Optional[str] = Field(default=None, alias="countryCode")
+
+    model_config = ConfigDict(populate_by_name=True)
+
+
+class ShortCodePrefillContact(BaseModel):
+    """The business contact from the workspace's details. Only known parts"""
+
+    name: Optional[str] = None
+    email: Optional[str] = None
+    phone: Optional[str] = None
+
+    model_config = ConfigDict(populate_by_name=True)
+
+
+class ShortCodePrefill(BaseModel):
+    """Suggestions from what the workspace has already told Sendly: its 10DLC
+    brand or its toll-free verification. Never saved on the application
+    unless sent back with a save. Fields with no value are None."""
+
+    source: str = Field(default="none", description="tendlc | verification | none")
+    legal_name: Optional[str] = Field(default=None, alias="legalName")
+    dba: Optional[str] = None
+    ein: Optional[str] = None
+    website_url: Optional[str] = Field(default=None, alias="websiteUrl")
+    address: Optional[ShortCodePrefillAddress] = None
+    contact: Optional[ShortCodePrefillContact] = None
+    privacy_policy_url: Optional[str] = Field(
+        default=None,
+        alias="privacyPolicyUrl",
+        description="From the toll-free verification",
+    )
+    terms_url: Optional[str] = Field(
+        default=None, alias="termsUrl", description="From the toll-free verification"
+    )
+    uses_hosted_legal_pages: Optional[bool] = Field(
+        default=None,
+        alias="usesHostedLegalPages",
+        description="Whether the toll-free verification uses Sendly's hosted legal pages",
+    )
+
+    model_config = ConfigDict(populate_by_name=True)
+
+
+class ShortCodeGeneratedDefaults(BaseModel):
+    """Wording Sendly suggested. Submit refuses it with
+    ``short_code_ai_draft_unedited`` until a person has edited it."""
+
+    use_case: Optional[str] = Field(default=None, alias="useCase")
+    opt_in_flow: Optional[str] = Field(default=None, alias="optInFlow")
+
+    model_config = ConfigDict(populate_by_name=True)
+
+
+class ShortCodeQuote(BaseModel):
+    """The price: the published one for this code type, or once submitted
+    the one fixed at submit"""
+
+    code_type: str = Field(default="random", alias="codeType", description="random | vanity")
+    monthly_usd: int = Field(default=0, alias="monthlyUsd", description="Monthly lease, in USD")
+    setup_usd: int = Field(default=0, alias="setupUsd", description="One-time setup fee, in USD")
+    currency: str = Field(default="USD")
+    auto_billed: bool = Field(
+        default=False,
+        alias="autoBilled",
+        description="Always False, kept for older clients; billing says what is charged",
+    )
+    setup_cents: int = Field(
+        default=0, alias="setupCents", description="One-time setup fee in cents, charged at submit"
+    )
+    monthly_cents: int = Field(
+        default=0,
+        alias="monthlyCents",
+        description="Monthly lease in cents, fixed when the application is submitted",
+    )
+    minimum_term_months: int = Field(
+        default=0,
+        alias="minimumTermMonths",
+        description="The lease runs at least this many months from go-live",
+    )
+    setup_charged_at: str = Field(default="submit", alias="setupChargedAt")
+    lease_starts_at: str = Field(default="go_live", alias="leaseStartsAt")
+
+    model_config = ConfigDict(populate_by_name=True)
+
+
+class ShortCodeLeasePastDue(BaseModel):
+    """A lease month that has not been paid"""
+
+    charge_id: str = Field(..., alias="chargeId")
+    amount_cents: int = Field(default=0, alias="amountCents")
+    status: str = Field(default="")
+    period_start: Optional[str] = Field(default=None, alias="periodStart")
+    period_end: Optional[str] = Field(default=None, alias="periodEnd")
+    first_failed_at: Optional[str] = Field(default=None, alias="firstFailedAt")
+    pause_at: Optional[str] = Field(
+        default=None,
+        alias="pauseAt",
+        description="When sending from the code pauses if the month is still unpaid",
+    )
+    notice_stage: Optional[str] = Field(default=None, alias="noticeStage")
+
+    model_config = ConfigDict(populate_by_name=True)
+
+
+class ShortCodeLease(BaseModel):
+    """The monthly lease of a short code"""
+
+    monthly_cents: int = Field(default=0, alias="monthlyCents")
+    minimum_term_months: int = Field(default=0, alias="minimumTermMonths")
+    starts_at: Optional[str] = Field(
+        default=None, alias="startsAt", description="Present on the application; always go_live"
+    )
+    state: str = Field(
+        default="not_started",
+        description="not_started | running | past_due | paused | ending | ended",
+    )
+    billing_enabled: bool = Field(
+        default=False,
+        alias="billingEnabled",
+        description="False while Sendly is not billing leases yet",
+    )
+    started_at: Optional[str] = Field(default=None, alias="startedAt")
+    next_charge_at: Optional[str] = Field(default=None, alias="nextChargeAt")
+    paid_through: Optional[str] = Field(default=None, alias="paidThrough")
+    term_ends_at: Optional[str] = Field(default=None, alias="termEndsAt")
+    ends_at: Optional[str] = Field(
+        default=None, alias="endsAt", description="Set once the lease is cancelled"
+    )
+    cancel_requested_at: Optional[str] = Field(default=None, alias="cancelRequestedAt")
+    past_due: Optional[ShortCodeLeasePastDue] = Field(default=None, alias="pastDue")
+    due_months: int = Field(
+        default=0,
+        alias="dueMonths",
+        description="Months that fell due and are charged in the next daily run",
+    )
+    due_cents: int = Field(default=0, alias="dueCents")
+
+    model_config = ConfigDict(populate_by_name=True)
+
+
+class ShortCodeCharge(BaseModel):
+    """One short code charge: the setup fee or a lease month"""
+
+    id: str
+    kind: str = Field(..., description="setup | lease")
+    amount_cents: int = Field(default=0, alias="amountCents")
+    status: str = Field(
+        default="",
+        description="paid, refunded, waived, not_charged, or a payment still being taken",
+    )
+    paid_at: Optional[str] = Field(default=None, alias="paidAt")
+    refunded_cents: int = Field(default=0, alias="refundedCents")
+    refunded_at: Optional[str] = Field(default=None, alias="refundedAt")
+    period_start: Optional[str] = Field(default=None, alias="periodStart")
+    period_end: Optional[str] = Field(default=None, alias="periodEnd")
+    created_at: Optional[str] = Field(default=None, alias="createdAt")
+
+    model_config = ConfigDict(populate_by_name=True)
+
+
+class ShortCodeSetupFee(BaseModel):
+    """Where a short code's one-time setup fee stands"""
+
+    amount_cents: int = Field(default=0, alias="amountCents")
+    status: str = Field(
+        default="unpaid",
+        description=(
+            "unpaid | processing | requires_action | failed | no_payment_method | "
+            "paid | waived | refund_pending | refunded"
+        ),
+    )
+    charged_at: Optional[str] = Field(
+        default=None, alias="chargedAt", description="Always submit on the application"
+    )
+    paid_at: Optional[str] = Field(default=None, alias="paidAt")
+    refunded_cents: int = Field(default=0, alias="refundedCents")
+    refunded_at: Optional[str] = Field(default=None, alias="refundedAt")
+
+    model_config = ConfigDict(populate_by_name=True)
+
+
+class ShortCodeTerms(BaseModel):
+    """The short code terms, and which version was accepted at submit"""
+
+    version: str = Field(default="")
+    accepted_version: Optional[str] = Field(default=None, alias="acceptedVersion")
+    accepted_at: Optional[str] = Field(default=None, alias="acceptedAt")
+
+    model_config = ConfigDict(populate_by_name=True)
+
+
+class ShortCodeBilling(BaseModel):
+    """Where the money stands on a short code application"""
+
+    setup_fee: ShortCodeSetupFee = Field(..., alias="setupFee")
+    lease: ShortCodeLease
+    terms: Optional[ShortCodeTerms] = None
+    refund_policy: Optional[str] = Field(default=None, alias="refundPolicy")
+    exempt: Optional[str] = Field(
+        default=None,
+        description="mock | enterprise when the workspace isn't charged by card, else None",
+    )
+    charges: List[ShortCodeCharge] = Field(default_factory=list)
+
+    model_config = ConfigDict(populate_by_name=True)
+
+
+class ShortCodeListBilling(BaseModel):
+    """Where a listed short code's setup fee and lease stand"""
+
+    setup_fee: ShortCodeSetupFee = Field(..., alias="setupFee")
+    lease: ShortCodeLease
+
+    model_config = ConfigDict(populate_by_name=True)
+
+
+class ShortCodeVerification(BaseModel):
+    """Whether the workspace's business is verified, which submitting needs"""
+
+    verified: bool = False
+    state: str = Field(
+        default="not_started",
+        description="verified | in_review | needs_attention | not_started",
+    )
+    href: str = Field(default="", description="The dashboard page for the verification")
+
+    model_config = ConfigDict(populate_by_name=True)
+
+
+class ShortCodeCarrierApproval(BaseModel):
+    """One carrier's certification of the code"""
+
+    carrier: str = Field(..., description="ATT | TMOBILE | VERIZON | US_CELLULAR")
+    label: str = Field(default="", description="The carrier's name, such as T-Mobile")
+    status: str = Field(
+        default="not_submitted",
+        description="not_submitted | submitted | in_review | approved | rejected",
+    )
+    updated_at: Optional[str] = Field(default=None, alias="updatedAt")
+
+    model_config = ConfigDict(populate_by_name=True)
+
+
+class ShortCodeCarriers(BaseModel):
+    """Where each carrier's certification stands"""
+
+    approved: int = 0
+    total: int = 0
+    overall: str = Field(
+        default="not_submitted",
+        description="not_submitted | in_progress | approved | rejected",
+    )
+    by_carrier: List[ShortCodeCarrierApproval] = Field(default_factory=list, alias="byCarrier")
+
+    model_config = ConfigDict(populate_by_name=True)
+
+
+class ShortCodePayment(BaseModel):
+    """On submit: the setup fee's status and whether this call charged it"""
+
+    status: str
+    charged: bool = False
+
+    model_config = ConfigDict(populate_by_name=True)
+
+
+class ShortCodeApplicationView(BaseModel):
+    """The short code application plus everything needed to act on it"""
+
+    enabled: bool = True
+    application: ShortCodeApplication
+    prefill: Optional[ShortCodePrefill] = None
+    editable: bool = Field(default=False, description="Whether a save can change the application")
+    lock_message: Optional[str] = Field(
+        default=None, alias="lockMessage", description="Why it cannot be edited; None while it can"
+    )
+    can_start_new_application: bool = Field(
+        default=False,
+        alias="canStartNewApplication",
+        description="Whether it is finished, so the next save starts a new one",
+    )
+    generated_defaults: Optional[ShortCodeGeneratedDefaults] = Field(
+        default=None, alias="generatedDefaults"
+    )
+    required_documents: List[str] = Field(default_factory=list, alias="requiredDocuments")
+    missing_documents: List[str] = Field(default_factory=list, alias="missingDocuments")
+    documents: List[ShortCodeDocument] = Field(default_factory=list)
+    quote: Optional[ShortCodeQuote] = None
+    billing: Optional[ShortCodeBilling] = None
+    verification: Optional[ShortCodeVerification] = None
+    carriers: Optional[ShortCodeCarriers] = None
+    submitted: Optional[bool] = Field(default=None, description="On submit: always True")
+    already_submitted: Optional[bool] = Field(
+        default=None,
+        alias="alreadySubmitted",
+        description="On submit: True when it was already with Sendly, and nothing was charged",
+    )
+    notified: Optional[bool] = Field(
+        default=None, description="On submit: whether Sendly's review team was told"
+    )
+    payment: Optional[ShortCodePayment] = Field(
+        default=None,
+        description="On submit: the setup fee's status and whether this call charged it",
+    )
+    ignored_fields: Optional[List[str]] = Field(
+        default=None,
+        alias="ignoredFields",
+        description="On a save: fields Sendly or the carriers own, which were not saved",
+    )
+
+    model_config = ConfigDict(populate_by_name=True)
+
+
+class ShortCodePreflight(BaseModel):
+    """What a dry run of the application says, without changing anything"""
+
+    ok: bool = Field(..., description="Whether the application can be submitted as it is")
+    issues: List[ShortCodeIssue] = Field(default_factory=list)
+    required_documents: List[str] = Field(default_factory=list, alias="requiredDocuments")
+    missing_documents: List[str] = Field(default_factory=list, alias="missingDocuments")
+    documents: List[ShortCodeDocument] = Field(default_factory=list)
+    ignored_fields: Optional[List[str]] = Field(default=None, alias="ignoredFields")
+
+    model_config = ConfigDict(populate_by_name=True)
+
+
+class ShortCode(BaseModel):
+    """One of the workspace's short code applications, with its code once
+    Sendly assigns one. ``short_code`` is None until then; drafts, rejected
+    and cancelled applications are listed too."""
+
+    id: str
+    short_code: Optional[str] = Field(default=None, alias="shortCode")
+    country_code: str = Field(default="US", alias="countryCode")
+    status: str = Field(
+        ...,
+        description=(
+            "requested | provisioning | parked | active | suspended | cancelled. "
+            "Only active can send"
+        ),
+    )
+    review_status: str = Field(..., alias="reviewStatus")
+    use_case: str = Field(default="", alias="useCase")
+    created_at: Optional[str] = Field(default=None, alias="createdAt")
+    billing: Optional[ShortCodeListBilling] = None
+
+    model_config = ConfigDict(populate_by_name=True)
+
+
+class ShortCodeListResponse(BaseModel):
+    """Every short code application and code of the workspace, newest first"""
+
+    short_codes: List[ShortCode] = Field(default_factory=list, alias="shortCodes")
+
+    model_config = ConfigDict(populate_by_name=True)
+
+
+class ShortCodeApplicationInput(BaseModel):
+    """Answers to save on the short code application. Every field is
+    optional: a field left out keeps its saved value, and None (when set
+    explicitly) or a blank string clears it."""
+
+    use_case: Optional[str] = Field(default=None, alias="useCase")
+    opt_in_flow: Optional[str] = Field(default=None, alias="optInFlow")
+    opt_in_confirmation: Optional[str] = Field(default=None, alias="optInConfirmation")
+    help_response: Optional[str] = Field(
+        default=None,
+        alias="helpResponse",
+        description=(
+            "The reply to HELP: the program name, a help contact, "
+            "'Msg&data rates may apply', the message frequency and how to stop"
+        ),
+    )
+    stop_confirmation: Optional[str] = Field(default=None, alias="stopConfirmation")
+    message_frequency: Optional[str] = Field(
+        default=None,
+        alias="messageFrequency",
+        description="Specific, such as '4 messages per month', or 'Message frequency varies'",
+    )
+    campaign_keyword: Optional[str] = Field(default=None, alias="campaignKeyword")
+    expected_monthly_volume: Optional[str] = Field(default=None, alias="expectedMonthlyVolume")
+    expected_daily_volume: Optional[str] = Field(default=None, alias="expectedDailyVolume")
+    privacy_policy_url: Optional[str] = Field(default=None, alias="privacyPolicyUrl")
+    terms_url: Optional[str] = Field(default=None, alias="termsUrl")
+    country_code: Optional[str] = Field(default=None, alias="countryCode", description="Only US")
+    order_type: Optional[str] = Field(
+        default=None, alias="orderType", description="new | migration"
+    )
+    code_type: Optional[str] = Field(default=None, alias="codeType", description="random | vanity")
+    requested_digits: Optional[str] = Field(
+        default=None,
+        alias="requestedDigits",
+        description="5 or 6 digits: the vanity code, or the code being migrated",
+    )
+    losing_provider: Optional[str] = Field(default=None, alias="losingProvider")
+    brand_contact_name: Optional[str] = Field(default=None, alias="brandContactName")
+    brand_contact_email: Optional[str] = Field(default=None, alias="brandContactEmail")
+    brand_contact_phone: Optional[str] = Field(default=None, alias="brandContactPhone")
+    content_provider_same_as_brand: Optional[bool] = Field(
+        default=None, alias="contentProviderSameAsBrand"
+    )
+    content_provider_legal_name: Optional[str] = Field(
+        default=None, alias="contentProviderLegalName"
+    )
+    content_provider_ein: Optional[str] = Field(default=None, alias="contentProviderEin")
+    content_provider_contact_name: Optional[str] = Field(
+        default=None, alias="contentProviderContactName"
+    )
+    content_provider_contact_email: Optional[str] = Field(
+        default=None, alias="contentProviderContactEmail"
+    )
+    content_provider_contact_phone: Optional[str] = Field(
+        default=None, alias="contentProviderContactPhone"
+    )
+    sample_messages: Optional[List[str]] = Field(default=None, alias="sampleMessages")
+
+    model_config = ConfigDict(populate_by_name=True)
+
+
+class ShortCodeSubmitInput(ShortCodeApplicationInput):
+    """The body of a submit: final answers, plus acceptance of the price"""
+
+    accept_terms: Optional[bool] = Field(
+        default=None,
+        alias="acceptTerms",
+        description=(
+            "Accepts the $999 setup fee, charged to the workspace's card at "
+            "submit, the monthly lease from go-live and the 3-month minimum. "
+            "Submit is refused with short_code_invalid_application until True"
+        ),
+    )

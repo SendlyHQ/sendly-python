@@ -1,4 +1,4 @@
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Union
 from urllib.parse import quote
 
 from ..errors import NotFoundError, RateLimitError, SendlyError
@@ -44,6 +44,36 @@ def _workspace_detail(response: Dict[str, Any]) -> EnterpriseWorkspaceDetail:
     if "creditBalance" not in data and isinstance(data.get("credits"), (int, float)):
         data["creditBalance"] = data["credits"]
     return EnterpriseWorkspaceDetail(**data)
+
+
+def _workspace_list_params(
+    limit: Optional[int],
+    page: Optional[int],
+    search: Optional[str],
+    status: Optional[str],
+    verification: Optional[str],
+    sort: Optional[str],
+    tags: Optional[Union[str, List[str]]],
+    compact: Optional[bool],
+) -> Dict[str, Any]:
+    params: Dict[str, Any] = {}
+    if limit is not None:
+        params["limit"] = limit
+    if page is not None:
+        params["page"] = page
+    if search:
+        params["search"] = search
+    if status:
+        params["status"] = status
+    if verification:
+        params["verification"] = verification
+    if sort:
+        params["sort"] = sort
+    if tags:
+        params["tags"] = tags if isinstance(tags, str) else ",".join(tags)
+    if compact:
+        params["compact"] = "true"
+    return params
 
 
 def _submit_body(data: Optional[Dict[str, Any]], kwargs: Dict[str, Any]) -> Dict[str, Any]:
@@ -105,8 +135,42 @@ class WorkspacesSubResource:
         response = self._http.request("POST", "/enterprise/workspaces", body=body)
         return EnterpriseWorkspace(**response)
 
-    def list(self) -> EnterpriseWorkspaceListResponse:
-        response = self._http.request("GET", "/enterprise/workspaces")
+    def list(
+        self,
+        *,
+        limit: Optional[int] = None,
+        page: Optional[int] = None,
+        search: Optional[str] = None,
+        status: Optional[str] = None,
+        verification: Optional[str] = None,
+        sort: Optional[str] = None,
+        tags: Optional[Union[str, List[str]]] = None,
+        compact: Optional[bool] = None,
+    ) -> EnterpriseWorkspaceListResponse:
+        """List the workspaces the enterprise owns, newest first.
+
+        Args:
+            limit: Page size, up to 100 (default 50).
+            page: The page, starting at 1.
+            search: Only workspaces whose name contains this, ignoring case.
+            status: Only workspaces with this status; ``all`` (the default)
+                keeps all.
+            verification: Only workspaces whose verification has this
+                status; ``unverified`` keeps those with none.
+            sort: ``created_desc`` (the default), ``created_asc``,
+                ``name_asc``, ``name_desc``, ``credits_desc`` or
+                ``credits_asc``.
+            tags: Tag ids (a list, or one comma-separated string): only
+                workspaces with at least one of them.
+            compact: True returns every workspace's id, name and credit
+                balance instead, ignoring the filters and paging.
+        """
+        params = _workspace_list_params(
+            limit, page, search, status, verification, sort, tags, compact
+        )
+        response = self._http.request(
+            "GET", "/enterprise/workspaces", params=params if params else None
+        )
         return EnterpriseWorkspaceListResponse(**response)
 
     def get(self, workspace_id: str) -> EnterpriseWorkspaceDetail:
@@ -684,7 +748,22 @@ class EnterpriseResource:
         file_path: str,
         workspace_id: Optional[str] = None,
         verification_id: Optional[str] = None,
+        content_type: Optional[str] = None,
     ) -> Dict[str, Any]:
+        """Upload a business registration document for a toll-free
+        verification.
+
+        Args:
+            file_path: Path to a PNG, JPEG, GIF or WEBP image, or a PDF, up
+                to 10 MB.
+            workspace_id: Attach it to this workspace's verification.
+            verification_id: Attach it to this verification.
+            content_type: The file's type, such as ``'application/pdf'``.
+                Guessed from the file extension when omitted; pass it for a
+                file without a matching extension, since the API refuses any
+                type other than image/png, image/jpeg, image/gif,
+                image/webp and application/pdf.
+        """
         import os
         import mimetypes
 
@@ -692,7 +771,11 @@ class EnterpriseResource:
             raise ValueError("A valid file path is required")
 
         filename = os.path.basename(file_path)
-        content_type = mimetypes.guess_type(file_path)[0] or "application/octet-stream"
+        content_type = (
+            content_type
+            or mimetypes.guess_type(file_path)[0]
+            or "application/octet-stream"
+        )
 
         with open(file_path, "rb") as f:
             files = {"file": (filename, f.read(), content_type)}
@@ -745,8 +828,25 @@ class AsyncWorkspacesSubResource:
         response = await self._http.request("POST", "/enterprise/workspaces", body=body)
         return EnterpriseWorkspace(**response)
 
-    async def list(self) -> EnterpriseWorkspaceListResponse:
-        response = await self._http.request("GET", "/enterprise/workspaces")
+    async def list(
+        self,
+        *,
+        limit: Optional[int] = None,
+        page: Optional[int] = None,
+        search: Optional[str] = None,
+        status: Optional[str] = None,
+        verification: Optional[str] = None,
+        sort: Optional[str] = None,
+        tags: Optional[Union[str, List[str]]] = None,
+        compact: Optional[bool] = None,
+    ) -> EnterpriseWorkspaceListResponse:
+        """List the workspaces. See :meth:`WorkspacesSubResource.list`."""
+        params = _workspace_list_params(
+            limit, page, search, status, verification, sort, tags, compact
+        )
+        response = await self._http.request(
+            "GET", "/enterprise/workspaces", params=params if params else None
+        )
         return EnterpriseWorkspaceListResponse(**response)
 
     async def get(self, workspace_id: str) -> EnterpriseWorkspaceDetail:
@@ -1275,7 +1375,22 @@ class AsyncEnterpriseResource:
         file_path: str,
         workspace_id: Optional[str] = None,
         verification_id: Optional[str] = None,
+        content_type: Optional[str] = None,
     ) -> Dict[str, Any]:
+        """Upload a business registration document for a toll-free
+        verification.
+
+        Args:
+            file_path: Path to a PNG, JPEG, GIF or WEBP image, or a PDF, up
+                to 10 MB.
+            workspace_id: Attach it to this workspace's verification.
+            verification_id: Attach it to this verification.
+            content_type: The file's type, such as ``'application/pdf'``.
+                Guessed from the file extension when omitted; pass it for a
+                file without a matching extension, since the API refuses any
+                type other than image/png, image/jpeg, image/gif,
+                image/webp and application/pdf.
+        """
         import os
         import mimetypes
 
@@ -1283,7 +1398,11 @@ class AsyncEnterpriseResource:
             raise ValueError("A valid file path is required")
 
         filename = os.path.basename(file_path)
-        content_type = mimetypes.guess_type(file_path)[0] or "application/octet-stream"
+        content_type = (
+            content_type
+            or mimetypes.guess_type(file_path)[0]
+            or "application/octet-stream"
+        )
 
         with open(file_path, "rb") as f:
             files = {"file": (filename, f.read(), content_type)}

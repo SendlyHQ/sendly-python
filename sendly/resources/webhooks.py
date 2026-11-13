@@ -18,6 +18,7 @@ from ..types import (
     WebhookCreatedResponse,
     WebhookDelivery,
     WebhookMode,
+    WebhookRecoveryPreview,
     WebhookSecretRotation,
     WebhookTestResult,
 )
@@ -98,6 +99,32 @@ def _parse_deliveries(response: Any) -> List[WebhookDelivery]:
     items = response.get("deliveries", []) if isinstance(response, dict) else response
     try:
         return [WebhookDelivery(**_transform_delivery_response(d)) for d in items]
+    except PydanticValidationError as e:
+        raise SendlyError(
+            message=f"Invalid API response format: {e}",
+            code="invalid_response",
+            status_code=200,
+        ) from e
+
+
+def _recovery_preview_params(
+    since: Optional[str],
+    until: Optional[str],
+    event_types: Optional[List[str]],
+) -> Optional[Dict[str, Any]]:
+    params: Dict[str, Any] = {}
+    if since is not None:
+        params["since"] = since
+    if until is not None:
+        params["until"] = until
+    if event_types:
+        params["event_types"] = ",".join(event_types)
+    return params or None
+
+
+def _parse_recovery_preview(response: Any) -> WebhookRecoveryPreview:
+    try:
+        return WebhookRecoveryPreview(**response)
     except PydanticValidationError as e:
         raise SendlyError(
             message=f"Invalid API response format: {e}",
@@ -433,6 +460,40 @@ class WebhooksResource:
             "POST", f"/webhooks/{quote(webhook_id, safe='')}/backfill", body=body or None
         )
 
+    def recovery_preview(
+        self,
+        webhook_id: str,
+        *,
+        since: Optional[str] = None,
+        until: Optional[str] = None,
+        event_types: Optional[List[str]] = None,
+    ) -> WebhookRecoveryPreview:
+        """
+        Preview a recovery: count what :meth:`redeliver` and :meth:`backfill`
+        would send for a window, without sending anything.
+
+        The window is at most 7 days long.
+
+        Args:
+            webhook_id: Webhook ID
+            since: Window start, ISO-8601 (default: now − 24h)
+            until: Window end, ISO-8601 (default: now)
+            event_types: Event types to count (default: all); sent
+                comma-separated
+
+        Returns:
+            Circuit state, failed and missing counts, a histogram and samples
+        """
+        if not webhook_id or not webhook_id.startswith("whk_"):
+            raise ValueError("Invalid webhook ID format")
+
+        response = self._http.request(
+            "GET",
+            f"/webhooks/{quote(webhook_id, safe='')}/recovery-preview",
+            params=_recovery_preview_params(since, until, event_types),
+        )
+        return _parse_recovery_preview(response)
+
     def rotate_secret(self, webhook_id: str) -> WebhookSecretRotation:
         """
         Rotate the webhook signing secret.
@@ -678,6 +739,28 @@ class AsyncWebhooksResource:
         return await self._http.request(
             "POST", f"/webhooks/{quote(webhook_id, safe='')}/backfill", body=body or None
         )
+
+    async def recovery_preview(
+        self,
+        webhook_id: str,
+        *,
+        since: Optional[str] = None,
+        until: Optional[str] = None,
+        event_types: Optional[List[str]] = None,
+    ) -> WebhookRecoveryPreview:
+        """Preview a recovery without sending anything.
+
+        See :meth:`WebhooksResource.recovery_preview` for details.
+        """
+        if not webhook_id or not webhook_id.startswith("whk_"):
+            raise ValueError("Invalid webhook ID format")
+
+        response = await self._http.request(
+            "GET",
+            f"/webhooks/{quote(webhook_id, safe='')}/recovery-preview",
+            params=_recovery_preview_params(since, until, event_types),
+        )
+        return _parse_recovery_preview(response)
 
     async def rotate_secret(self, webhook_id: str) -> WebhookSecretRotation:
         """Rotate the webhook signing secret.

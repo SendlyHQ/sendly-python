@@ -2,10 +2,12 @@
 Tests for scheduled messages (schedule, list_scheduled, get_scheduled, cancel_scheduled)
 """
 
+import json
+
 import pytest
 from pytest_httpx import HTTPXMock
 
-from sendly import Sendly
+from sendly import AsyncSendly, Sendly
 from sendly.errors import (
     AuthenticationError,
     InsufficientCreditsError,
@@ -47,6 +49,71 @@ class TestMessagesSchedule:
         assert scheduled.scheduled_at == "2025-01-21T10:00:00Z"
 
         client.close()
+
+    def test_schedule_sends_timezone_and_reads_it_back(
+        self, api_key, mock_scheduled_message, httpx_mock: HTTPXMock
+    ):
+        client = Sendly(api_key)
+        httpx_mock.add_response(
+            url="https://sendly.live/api/v1/messages/schedule",
+            method="POST",
+            json={**mock_scheduled_message, "timezone": "America/New_York"},
+        )
+
+        scheduled = client.messages.schedule(
+            to="+15551234567",
+            text="Scheduled message",
+            scheduled_at="2025-01-21T10:00:00-05:00",
+            timezone="America/New_York",
+        )
+
+        body = json.loads(httpx_mock.get_request().read().decode())
+        assert body["timezone"] == "America/New_York"
+        assert body["scheduledAt"] == "2025-01-21T10:00:00-05:00"
+        assert scheduled.timezone == "America/New_York"
+        client.close()
+
+    def test_schedule_omits_timezone_when_unset(
+        self, api_key, mock_scheduled_message, httpx_mock: HTTPXMock
+    ):
+        client = Sendly(api_key)
+        httpx_mock.add_response(
+            url="https://sendly.live/api/v1/messages/schedule",
+            method="POST",
+            json=mock_scheduled_message,
+        )
+
+        scheduled = client.messages.schedule(
+            to="+15551234567",
+            text="Scheduled message",
+            scheduled_at="2025-01-21T10:00:00Z",
+        )
+
+        assert "timezone" not in json.loads(httpx_mock.get_request().read().decode())
+        assert scheduled.timezone is None
+        client.close()
+
+    async def test_async_schedule_sends_timezone(
+        self, api_key, mock_scheduled_message, httpx_mock: HTTPXMock
+    ):
+        client = AsyncSendly(api_key)
+        httpx_mock.add_response(
+            url="https://sendly.live/api/v1/messages/schedule",
+            method="POST",
+            json={**mock_scheduled_message, "timezone": "Europe/London"},
+        )
+
+        scheduled = await client.messages.schedule(
+            to="+15551234567",
+            text="Scheduled message",
+            scheduled_at="2025-01-21T10:00:00Z",
+            timezone="Europe/London",
+        )
+
+        body = json.loads(httpx_mock.get_request().read().decode())
+        assert body["timezone"] == "Europe/London"
+        assert scheduled.timezone == "Europe/London"
+        await client.close()
 
     def test_schedule_with_sender_id(self, api_key, mock_scheduled_message, httpx_mock: HTTPXMock):
         """Test scheduling message with sender ID"""

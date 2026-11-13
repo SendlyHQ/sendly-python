@@ -475,6 +475,7 @@ class MessagesResource:
         message_type: Optional[str] = None,
         metadata: Optional[Dict[str, Any]] = None,
         idempotency_key: Optional[str] = None,
+        timezone: Optional[str] = None,
         **kwargs: Any,
     ) -> ScheduledMessage:
         """
@@ -491,6 +492,11 @@ class MessagesResource:
                 sent as the Idempotency-Key header - retrying with the same
                 key returns the original result instead of scheduling again.
                 Auto-generated when omitted
+            timezone: Optional IANA time zone name (e.g.
+                ``'America/New_York'``), stored with the message and returned
+                as sent; the API defaults it to ``UTC``. It does not change
+                how ``scheduled_at`` is read, so give ``scheduled_at`` an
+                offset or ``Z``.
 
         Returns:
             The scheduled message
@@ -520,6 +526,8 @@ class MessagesResource:
             body["messageType"] = message_type
         if metadata:
             body["metadata"] = metadata
+        if timezone:
+            body["timezone"] = timezone
 
         data = self._http.request(
             method="POST",
@@ -1345,6 +1353,7 @@ class AsyncMessagesResource:
         message_type: Optional[str] = None,
         metadata: Optional[Dict[str, Any]] = None,
         idempotency_key: Optional[str] = None,
+        timezone: Optional[str] = None,
         **kwargs: Any,
     ) -> ScheduledMessage:
         """
@@ -1361,6 +1370,11 @@ class AsyncMessagesResource:
                 sent as the Idempotency-Key header - retrying with the same
                 key returns the original result instead of scheduling again.
                 Auto-generated when omitted
+            timezone: Optional IANA time zone name (e.g.
+                ``'America/New_York'``), stored with the message and returned
+                as sent; the API defaults it to ``UTC``. It does not change
+                how ``scheduled_at`` is read, so give ``scheduled_at`` an
+                offset or ``Z``.
 
         Returns:
             The scheduled message
@@ -1381,6 +1395,8 @@ class AsyncMessagesResource:
             body["messageType"] = message_type
         if metadata:
             body["metadata"] = metadata
+        if timezone:
+            body["timezone"] = timezone
 
         data = await self._http.request(
             method="POST",

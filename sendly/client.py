@@ -24,6 +24,7 @@ from .resources.messages import AsyncMessagesResource, MessagesResource
 from .resources.numbers import AsyncNumbersResource, NumbersResource
 from .resources.rcs import AsyncRcsResource, RcsResource
 from .resources.rules import AsyncRulesResource, RulesResource
+from .resources.short_codes import AsyncShortCodesResource, ShortCodesResource
 from .resources.templates import AsyncTemplatesResource, TemplatesResource
 from .resources.tendlc import AsyncTenDlcResource, TenDlcResource
 from .resources.verify import AsyncVerifyResource, VerifyResource
@@ -134,6 +135,7 @@ class Sendly:
         self.business_upgrade = BusinessUpgradeResource(self._http)
         self.whatsapp = WhatsAppResource(self._http)
         self.rcs = RcsResource(self._http)
+        self.short_codes = ShortCodesResource(self._http)
         self.calls = CallsResource(self._http)
         self.voice = VoiceResource(self._http)
 
@@ -279,6 +281,7 @@ class AsyncSendly:
         self.business_upgrade = AsyncBusinessUpgradeResource(self._http)
         self.whatsapp = AsyncWhatsAppResource(self._http)
         self.rcs = AsyncRcsResource(self._http)
+        self.short_codes = AsyncShortCodesResource(self._http)
         self.calls = AsyncCallsResource(self._http)
         self.voice = AsyncVoiceResource(self._http)
 
