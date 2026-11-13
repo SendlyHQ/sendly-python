@@ -4750,6 +4750,91 @@ class DeletedVoiceAgent(BaseModel):
     deleted: bool = Field(..., description="Always True")
 
 
+class VoiceAgentTestOutcome(str, Enum):
+    """What a connection test found. ``ok``, or why not:
+    ``blocked_destination`` (the host isn't a public address),
+    ``unreachable``, ``timeout``, ``tls_failed``, ``auth_required`` (the SIP
+    server wants credentials the agent doesn't have), ``auth_failed`` (the
+    key, token or credentials were refused), ``not_found`` (wrong path or SIP
+    user), ``rejected`` (any other refusal) or ``bad_reply`` (an answer
+    outside the protocol). ``VoiceAgentTest.outcome`` is a plain string, so a
+    value added later is kept as it is."""
+
+    OK = "ok"
+    BLOCKED_DESTINATION = "blocked_destination"
+    UNREACHABLE = "unreachable"
+    TIMEOUT = "timeout"
+    TLS_FAILED = "tls_failed"
+    AUTH_REQUIRED = "auth_required"
+    AUTH_FAILED = "auth_failed"
+    NOT_FOUND = "not_found"
+    REJECTED = "rejected"
+    BAD_REPLY = "bad_reply"
+
+
+class VoiceAgentTestStepName(str, Enum):
+    """A step of a connection test. ``address``: the host resolved to a
+    public address. ``connect``: a connection opened. ``login``: the SIP
+    server accepted the credentials. ``reply``: the agent answered as it
+    should. ``VoiceAgentTestStep.step`` is a plain string, so a value added
+    later is kept as it is."""
+
+    ADDRESS = "address"
+    CONNECT = "connect"
+    LOGIN = "login"
+    REPLY = "reply"
+
+
+class VoiceAgentTestStep(BaseModel):
+    """One step of a connection test"""
+
+    step: str = Field(
+        ..., description="address | connect | login | reply (see VoiceAgentTestStepName)"
+    )
+    ok: bool = Field(..., description="Whether this step worked")
+    detail: str = Field(default="", description="What happened at this step, in plain words")
+
+
+class VoiceAgentTest(BaseModel):
+    """Response from ``client.voice.agents.test()``. A failed test is still a
+    successful request: check ``ok``."""
+
+    ok: bool = Field(..., description="Whether the agent answered the way a call needs")
+    outcome: str = Field(
+        ...,
+        description=(
+            "ok | blocked_destination | unreachable | timeout | tls_failed | "
+            "auth_required | auth_failed | not_found | rejected | bad_reply "
+            "(see VoiceAgentTestOutcome)"
+        ),
+    )
+    message: str = Field(
+        default="",
+        description="One or two sentences to show a person: what happened and what to change",
+    )
+    status: Optional[int] = Field(
+        default=None, description="The HTTP or SIP status the agent answered with, or None"
+    )
+    latency_ms: Optional[int] = Field(
+        default=None,
+        alias="latencyMs",
+        description="How long the agent took to answer, or None",
+    )
+    signed: bool = Field(
+        default=False,
+        description=(
+            "Whether the request carried X-Sendly-Signature, as calls do. Always "
+            "False for sip"
+        ),
+    )
+    steps: List[VoiceAgentTestStep] = Field(
+        default_factory=list,
+        description="Each step tried, in order, up to the first that failed",
+    )
+
+    model_config = ConfigDict(populate_by_name=True)
+
+
 class Voice(BaseModel):
     """A voice an agent can speak with"""
 
@@ -4814,6 +4899,31 @@ class UpdateVoiceAgentRequest(BaseModel):
         default=None,
         alias="rotateSigningSecret",
         description="True makes a new signing secret; the old one stops working at once",
+    )
+
+    model_config = ConfigDict(populate_by_name=True)
+
+
+class TestVoiceAgentRequest(BaseModel):
+    """Request body for ``client.voice.agents.test()``. Leave it out to test
+    the saved connection."""
+
+    __test__ = False
+
+    kind: Optional[str] = Field(
+        default=None,
+        description=(
+            "custom_llm | sip | websocket: the kind of the settings in connection. "
+            "Defaults to the agent's own kind"
+        ),
+    )
+    connection: Optional[Dict[str, Any]] = Field(
+        default=None,
+        description="Settings to test instead of the saved ones. Nothing is saved",
+    )
+    instructions: Optional[str] = Field(
+        default=None,
+        description="For custom_llm: the system prompt to send, up to 4000 characters",
     )
 
     model_config = ConfigDict(populate_by_name=True)

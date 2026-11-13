@@ -8,7 +8,7 @@ needs before it can place calls, and create, edit and remove the AI agents
 that talk to callers.
 
     client.voice.numbers   list, get, update, register_emergency_address
-    client.voice.agents    list, create, get, update, delete
+    client.voice.agents    list, create, get, update, test, delete
     client.voice.voices    list
 
 Reads need an API key with the ``calls:read`` scope, writes ``calls:write``
@@ -36,6 +36,7 @@ from ..types import (
     VoiceAgentCustomLlmConnectionInput,
     VoiceAgentListResponse,
     VoiceAgentSipConnectionInput,
+    VoiceAgentTest,
     VoiceAgentTools,
     VoiceAgentWebsocketConnectionInput,
     VoiceListResponse,
@@ -415,6 +416,69 @@ class VoiceAgentsResource:
         )
         return _parse(VoiceAgent, data)
 
+    def test(
+        self,
+        id: str,
+        *,
+        kind: Optional[EnumLike] = None,
+        connection: Optional[VoiceAgentConnectionInput] = None,
+        instructions: Optional[str] = None,
+    ) -> VoiceAgentTest:
+        """Test your own agent's connection the way a call would reach it,
+        without placing one. Requires the ``calls:write`` scope and a live API
+        key.
+
+        ``custom_llm`` gets a signed, streamed chat completion with a test
+        message. ``websocket`` gets a signed connection with ``connected``, a
+        ``start`` carrying ``test: true``, half a second of silence and a
+        ``stop`` with reason ``test_finished``. ``sip`` gets an ``OPTIONS``
+        request, answered with the saved credentials if the server asks; a SIP
+        server answering shows the address and credentials work, not which
+        agent picks up.
+
+        Pass ``connection`` to test settings before saving them. A workspace
+        can run 10 tests a minute. A failed test is still a successful
+        request: check ``ok`` on the result.
+
+        Args:
+            id: Agent identifier.
+            kind: ``custom_llm``, ``sip`` or ``websocket``: the kind of the
+                settings in ``connection``. Defaults to the agent's own kind.
+                Needed to test settings of another kind, such as on a
+                ``sendly`` agent before switching it.
+            connection: Settings to test instead of the saved ones, in the
+                same shapes as :meth:`create`. Nothing is saved. For the
+                agent's own kind, a secret left out is taken from the saved
+                connection, while the host stays the same.
+            instructions: For ``custom_llm``: the system prompt to send.
+                Defaults to the agent's instructions.
+
+        Raises:
+            ValidationError: ``id`` is empty, ``connection`` is not one of the
+                connection inputs or a dict, or the API answered
+                ``invalid_request`` (a ``sendly`` agent and no ``kind``, or a
+                ``connection`` that breaks a rule).
+            SendlyError: With ``code`` ``byo_agents_not_enabled`` (HTTP 403),
+                ``live_key_required`` (HTTP 403) or ``agent_not_found``
+                (HTTP 404).
+            RateLimitError: After 10 tests in a minute (HTTP 429).
+
+        Example:
+            >>> result = client.voice.agents.test(agent.id)
+            >>> if not result.ok:
+            ...     print(result.outcome, result.message)
+            >>> client.voice.agents.test(
+            ...     agent.id,
+            ...     connection={'uri': 'sip:+15125550100@sip.example.com', 'transport': 'tls'},
+            ... )
+        """
+        _require(id, "id")
+        body = _test_body(kind, connection, instructions)
+        data = self._http.request(
+            method="POST", path=f"{_agent_path(id)}/test", body=body, auto_idempotency_key=False
+        )
+        return _parse(VoiceAgentTest, data)
+
     def delete(self, id: str, *, idempotency_key: Optional[str] = None) -> DeletedVoiceAgent:
         """Delete an agent and revoke its sending key. Requires the
         ``calls:write`` scope and a live API key.
@@ -621,6 +685,22 @@ class AsyncVoiceAgentsResource:
         )
         return _parse(VoiceAgent, data)
 
+    async def test(
+        self,
+        id: str,
+        *,
+        kind: Optional[EnumLike] = None,
+        connection: Optional[VoiceAgentConnectionInput] = None,
+        instructions: Optional[str] = None,
+    ) -> VoiceAgentTest:
+        """Test an agent's connection. See :meth:`VoiceAgentsResource.test`."""
+        _require(id, "id")
+        body = _test_body(kind, connection, instructions)
+        data = await self._http.request(
+            method="POST", path=f"{_agent_path(id)}/test", body=body, auto_idempotency_key=False
+        )
+        return _parse(VoiceAgentTest, data)
+
     async def delete(
         self, id: str, *, idempotency_key: Optional[str] = None
     ) -> DeletedVoiceAgent:
@@ -731,6 +811,21 @@ def _agent_body(
         body["connection"] = _connection_body(connection)
     if rotate_signing_secret is True:
         body["rotateSigningSecret"] = True
+    return body
+
+
+def _test_body(
+    kind: Optional[EnumLike],
+    connection: Optional[VoiceAgentConnectionInput],
+    instructions: Optional[str],
+) -> Dict[str, Any]:
+    body: Dict[str, Any] = {}
+    if kind is not None:
+        body["kind"] = _value(kind)
+    if connection is not None:
+        body["connection"] = _connection_body(connection)
+    if instructions is not None:
+        body["instructions"] = instructions
     return body
 
 

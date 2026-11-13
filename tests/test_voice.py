@@ -14,7 +14,7 @@ from sendly import (
     Sendly,
     VoiceResource,
 )
-from sendly.errors import SendlyError, ValidationError
+from sendly.errors import RateLimitError, SendlyError, ValidationError
 from sendly.types import (
     DeletedVoiceAgent,
     EmergencyAddress,
@@ -26,6 +26,10 @@ from sendly.types import (
     VoiceAgentKind,
     VoiceAgentListResponse,
     VoiceAgentSipConnectionInput,
+    VoiceAgentTest,
+    VoiceAgentTestOutcome,
+    VoiceAgentTestStep,
+    VoiceAgentTestStepName,
     VoiceAgentTools,
     VoiceAgentWebsocketConnectionInput,
     VoiceListResponse,
@@ -1212,6 +1216,211 @@ class TestVoiceAgentsBringYourOwn:
             "connection": {"customParameters": None},
             "rotateSigningSecret": True,
         }
+
+        await client.close()
+
+
+@pytest.fixture
+def mock_agent_test():
+    return {
+        "ok": True,
+        "outcome": "ok",
+        "message": "Your agent's server answered in 84 ms.",
+        "status": 200,
+        "latencyMs": 84,
+        "signed": False,
+        "steps": [
+            {"step": "address", "ok": True, "detail": "sip.example.com points to a public server."},
+            {
+                "step": "connect",
+                "ok": True,
+                "detail": "Connected over TLS to sip.example.com:5061 in 41 ms.",
+            },
+            {"step": "reply", "ok": True, "detail": "SIP 200 OK"},
+        ],
+    }
+
+
+class TestVoiceAgentsConnectionTest:
+    def test_sends_empty_body_without_idempotency_key(
+        self, live_api_key, mock_agent_test, httpx_mock: HTTPXMock
+    ):
+        client = Sendly(live_api_key)
+
+        httpx_mock.add_response(
+            url=f"{BASE}/voice/agents/{AGENT_ID}/test", method="POST", json=mock_agent_test
+        )
+
+        result = client.voice.agents.test(AGENT_ID)
+
+        assert isinstance(result, VoiceAgentTest)
+        assert result.ok is True
+        assert result.outcome == VoiceAgentTestOutcome.OK
+        assert result.status == 200
+        assert result.latency_ms == 84
+        assert result.signed is False
+        assert [step.step for step in result.steps] == ["address", "connect", "reply"]
+        assert isinstance(result.steps[1], VoiceAgentTestStep)
+        assert result.steps[1].step == VoiceAgentTestStepName.CONNECT
+        assert result.steps[2].detail == "SIP 200 OK"
+
+        request = httpx_mock.get_request()
+        assert request.method == "POST"
+        assert request.url.path == f"/api/v1/voice/agents/{AGENT_ID}/test"
+        assert _body(request) == {}
+        assert "Idempotency-Key" not in request.headers
+
+        client.close()
+
+    def test_sends_kind_connection_and_instructions(
+        self, live_api_key, mock_agent_test, httpx_mock: HTTPXMock
+    ):
+        client = Sendly(live_api_key)
+
+        httpx_mock.add_response(
+            url=f"{BASE}/voice/agents/{AGENT_ID}/test", method="POST", json=mock_agent_test
+        )
+        httpx_mock.add_response(
+            url=f"{BASE}/voice/agents/{AGENT_ID}/test", method="POST", json=mock_agent_test
+        )
+
+        client.voice.agents.test(
+            AGENT_ID,
+            kind=VoiceAgentKind.CUSTOM_LLM,
+            connection={
+                "base_url": "https://llm.example.com/v1",
+                "model": "support-1",
+                "api_key": "sk_example",
+            },
+            instructions="Answer questions about opening hours.",
+        )
+        client.voice.agents.test(
+            AGENT_ID,
+            kind="sip",
+            connection=VoiceAgentSipConnectionInput(
+                uri="sip:+15125550100@sip.example.com", transport=SipTransport.TLS
+            ),
+        )
+
+        first, second = httpx_mock.get_requests()
+        assert _body(first) == {
+            "kind": "custom_llm",
+            "connection": {
+                "baseUrl": "https://llm.example.com/v1",
+                "model": "support-1",
+                "apiKey": "sk_example",
+            },
+            "instructions": "Answer questions about opening hours.",
+        }
+        assert _body(second) == {
+            "kind": "sip",
+            "connection": {"uri": "sip:+15125550100@sip.example.com", "transport": "tls"},
+        }
+        assert "Idempotency-Key" not in first.headers
+
+        client.close()
+
+    def test_failed_test_parses_and_keeps_unknown_values(
+        self, live_api_key, httpx_mock: HTTPXMock
+    ):
+        client = Sendly(live_api_key)
+
+        httpx_mock.add_response(
+            url=f"{BASE}/voice/agents/{AGENT_ID}/test",
+            method="POST",
+            json={
+                "ok": False,
+                "outcome": "certificate_expired",
+                "message": "Your agent's certificate has expired.",
+                "status": None,
+                "latencyMs": None,
+                "signed": True,
+                "steps": [
+                    {"step": "address", "ok": True, "detail": "agent.example.com is public."},
+                    {"step": "handshake", "ok": False, "detail": "The certificate expired."},
+                ],
+            },
+        )
+
+        result = client.voice.agents.test(AGENT_ID)
+
+        assert result.ok is False
+        assert result.outcome == "certificate_expired"
+        assert result.status is None
+        assert result.latency_ms is None
+        assert result.signed is True
+        assert result.steps[1].step == "handshake"
+        assert result.steps[1].ok is False
+
+        client.close()
+
+    def test_requires_id_and_dict_connection(self, live_api_key):
+        client = Sendly(live_api_key)
+
+        with pytest.raises(ValidationError):
+            client.voice.agents.test("")
+
+        with pytest.raises(ValidationError, match="connection"):
+            client.voice.agents.test(AGENT_ID, connection="wss://agent.example.com")
+
+        client.close()
+
+    def test_rate_limited_429(self, live_api_key, mock_error_response, httpx_mock: HTTPXMock):
+        client = Sendly(live_api_key, max_retries=0)
+
+        httpx_mock.add_response(
+            url=f"{BASE}/voice/agents/{AGENT_ID}/test",
+            method="POST",
+            status_code=429,
+            json=mock_error_response(
+                "rate_limit_exceeded", "Too many agent tests. Try again in a minute."
+            ),
+        )
+
+        with pytest.raises(RateLimitError) as exc_info:
+            client.voice.agents.test(AGENT_ID)
+
+        assert exc_info.value.code == "rate_limit_exceeded"
+
+        client.close()
+
+    def test_agent_not_found_404(
+        self, live_api_key, mock_error_response, httpx_mock: HTTPXMock
+    ):
+        client = Sendly(live_api_key, max_retries=0)
+
+        httpx_mock.add_response(
+            url=f"{BASE}/voice/agents/{AGENT_ID}/test",
+            method="POST",
+            status_code=404,
+            json=mock_error_response("agent_not_found", "Agent not found."),
+        )
+
+        with pytest.raises(SendlyError) as exc_info:
+            client.voice.agents.test(AGENT_ID)
+
+        assert exc_info.value.code == "agent_not_found"
+
+        client.close()
+
+    async def test_async_test(self, live_api_key, mock_agent_test, httpx_mock: HTTPXMock):
+        client = AsyncSendly(live_api_key)
+
+        httpx_mock.add_response(
+            url=f"{BASE}/voice/agents/{AGENT_ID}/test", method="POST", json=mock_agent_test
+        )
+
+        result = await client.voice.agents.test(
+            AGENT_ID, kind="websocket", connection={"url": "wss://agent.example.com/calls"}
+        )
+
+        assert result.ok is True
+        request = httpx_mock.get_request()
+        assert _body(request) == {
+            "kind": "websocket",
+            "connection": {"url": "wss://agent.example.com/calls"},
+        }
+        assert "Idempotency-Key" not in request.headers
 
         await client.close()
 

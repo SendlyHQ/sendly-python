@@ -517,8 +517,8 @@ contents.
 
 Write methods that accept `idempotency_key` include `messages.send`,
 `messages.schedule`, `messages.send_batch`, `messages.send_group`,
-`calls.create`, `calls.hangup`, `calls.transfer`, every `voice.*` write, and every
-`rcs.brands` / `rcs.agents` write.
+`calls.create`, `calls.hangup`, `calls.transfer`, every `voice.*` write but
+`voice.agents.test`, and every `rcs.brands` / `rcs.agents` write.
 
 Full details: https://sendly.live/docs/idempotency
 
@@ -2056,6 +2056,39 @@ request to your agent with the signing secret
 only on the create or update response that made it. A `connection` that breaks
 a rule raises `ValidationError` with a message like
 `connection.url: <reason>`.
+
+#### Test an agent's connection
+
+`voice.agents.test` reaches your own agent the way a call would, without
+placing one: `custom_llm` gets a signed, streamed chat completion with a test
+message, `websocket` gets a signed connection with a `start` carrying
+`test: true`, half a second of silence and a `stop`, and `sip` gets an
+`OPTIONS` request. Pass `kind`, `connection` or `instructions` to test settings
+before saving them; nothing is saved.
+
+```python
+result = client.voice.agents.test(agent.id)
+if not result.ok:
+    print(result.outcome, result.message)  # e.g. 'auth_failed'
+for step in result.steps:
+    print(step.step, step.ok, step.detail)
+
+# Try a new SIP address before saving it
+client.voice.agents.test(
+    agent.id,
+    kind='sip',
+    connection={'uri': 'sip:+15125550100@sip.example.com', 'transport': 'tls'},
+)
+```
+
+A failed test is still a successful request, so check `ok`. `outcome` is
+`ok`, `blocked_destination`, `unreachable`, `timeout`, `tls_failed`,
+`auth_required`, `auth_failed`, `not_found`, `rejected` or `bad_reply` (see
+`VoiceAgentTestOutcome`; a value added later comes through as a plain string),
+and each step is `address`, `connect`, `login` or `reply`. The result also
+carries `status` (the HTTP or SIP status, or None), `latency_ms` and `signed`.
+It needs the `calls:write` scope and a live key, takes no `idempotency_key`,
+and a workspace can run 10 tests a minute (`RateLimitError` after that).
 
 ## Error Handling
 
